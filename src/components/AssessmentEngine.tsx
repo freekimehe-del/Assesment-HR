@@ -60,9 +60,106 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
   // Proctor Logs States
   const [proctorFlags, setProctorFlags] = useState<ProctoringLog[]>([]);
   const [integrityScore, setIntegrityScore] = useState(100);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Concurrency Guard
+  const [isNavigating, setIsNavigating] = useState(false);
+  const isNavigatingRef = useRef(false);
 
   // Timers Refs
   const lastTimeRef = useRef<number>(Date.now());
+
+  // Input states refs to avoid stale interval closures
+  const codeRef = useRef(code);
+  const selectedMcqRef = useRef(selectedMcq);
+  const fillInTextRef = useRef(fillInText);
+
+  useEffect(() => {
+    codeRef.current = code;
+  }, [code]);
+
+  useEffect(() => {
+    selectedMcqRef.current = selectedMcq;
+  }, [selectedMcq]);
+
+  useEffect(() => {
+    fillInTextRef.current = fillInText;
+  }, [fillInText]);
+
+  // Editor scroll ref and handler
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const handleTextareaScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (lineNumbersRef.current) {
+      lineNumbersRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
+
+  // Real-time progress and pacing calculations
+  const totalTime = React.useMemo(() => {
+    return attempt.questions.reduce((sum, q) => sum + q.timeAllocation, 0);
+  }, [attempt.questions]);
+
+  const overallTimeRatio = overallRemaining / Math.max(1, totalTime);
+  const questionTimeRatio = questionRemaining / Math.max(1, activeQuestion?.timeAllocation || 60);
+
+  const answeredCount = React.useMemo(() => {
+    return attempt.questions.filter(q => {
+      const ans = attempt.answers[q.id];
+      if (Array.isArray(ans)) return ans.length > 0;
+      return ans !== undefined && ans !== null && ans !== "";
+    }).length;
+  }, [attempt.answers, attempt.questions]);
+
+  const completionPercent = Math.min(100, Math.round((answeredCount / Math.max(1, attempt.questions.length)) * 100));
+
+  // Pacing alerts
+  const { pacingStatus, pacingAdvice, pacingWarning } = React.useMemo(() => {
+    const remainingQuestionsCount = attempt.questions.length - answeredCount;
+    if (questionRemaining < 15) {
+      return {
+        pacingStatus: "Question Timeout Warning!",
+        pacingAdvice: "The timer for this specific question is almost up. Save or submit your current response.",
+        pacingWarning: true
+      };
+    }
+
+    const avgTimePerRemainingQuestion = remainingQuestionsCount > 0 ? overallRemaining / remainingQuestionsCount : 0;
+    const avgAllocation = totalTime / attempt.questions.length;
+
+    if (remainingQuestionsCount === 0) {
+      return {
+        pacingStatus: "All Questions Attempted",
+        pacingAdvice: "Great work! Review your answers or submit your assessment to complete.",
+        pacingWarning: false
+      };
+    }
+
+    const formatSeconds = (totalSec: number) => {
+      const m = Math.floor(totalSec / 60);
+      const s = Math.round(totalSec % 60);
+      return m > 0 ? `${m}m ${s}s` : `${s}s`;
+    };
+
+    if (avgTimePerRemainingQuestion >= avgAllocation * 0.95) {
+      return {
+        pacingStatus: "Pacing Status: Excellent",
+        pacingAdvice: `You have an average of ${formatSeconds(avgTimePerRemainingQuestion)} per remaining question. You're set up for success at this pace!`,
+        pacingWarning: false
+      };
+    } else if (avgTimePerRemainingQuestion >= avgAllocation * 0.7) {
+      return {
+        pacingStatus: "Pacing Status: On Track",
+        pacingAdvice: `You have an average of ${formatSeconds(avgTimePerRemainingQuestion)} remaining per question. Maintain this steady rate.`,
+        pacingWarning: false
+      };
+    } else {
+      return {
+        pacingStatus: "Pacing Status: Slightly Behind",
+        pacingAdvice: `You only have ${formatSeconds(avgTimePerRemainingQuestion)} per remaining question. Consider picking up the pace.`,
+        pacingWarning: true
+      };
+    }
+  }, [attempt.questions, answeredCount, overallRemaining, questionRemaining, totalTime]);
 
   // Restore existing answer if candidate has saved any
   useEffect(() => {
@@ -85,7 +182,7 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
       setOverallRemaining(prev => {
         if (prev <= 1) {
           clearInterval(interval);
-          handleFinalSubmission();
+          handleFinalSubmission(true);
           return 0;
         }
         return prev - 1;
@@ -108,6 +205,8 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
   // SECURE PROCTOR CONTROLS (Module 6)
   // ==========================================
   useEffect(() => {
+    setIsFullscreen(!!document.fullscreenElement);
+
     // 1. Tab switching (Blur events)
     const handleBlur = () => {
       logProctorEvent("tab_switch", "Candidate blurred workspace. Possible secondary lookup or communication.");
@@ -115,6 +214,7 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
 
     // 2. Fullscreen exit check
     const handleFullscreenExit = () => {
+      setIsFullscreen(!!document.fullscreenElement);
       if (!document.fullscreenElement) {
         logProctorEvent("fullscreen_exit", "Candidate exited enforced fullscreen workspace frame.");
       }
@@ -178,11 +278,11 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
     // Determine target answer string
     let currentAns: any = "";
     if (activeQuestion.type === "coding") {
-      currentAns = code;
+      currentAns = codeRef.current;
     } else if (activeQuestion.type === "fill_in_blank") {
-      currentAns = fillInText;
+      currentAns = fillInTextRef.current;
     } else {
-      currentAns = selectedMcq;
+      currentAns = selectedMcqRef.current;
     }
 
     // Measure time spent
@@ -203,31 +303,48 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
         })
       });
 
-      // Update local state copy
-      const updatedAnswers = { ...attempt.answers, [activeQuestion.id]: currentAns };
-      setAttempt(prev => ({
-        ...prev,
-        answers: updatedAnswers
-      }));
+      // Update local state copy safely
+      setAttempt(prev => {
+        const updatedAnswers = { ...prev.answers, [activeQuestion.id]: currentAns };
+        return {
+          ...prev,
+          answers: updatedAnswers
+        };
+      });
     } catch (err) {
       console.error("Save answer failed:", err);
     }
   };
 
   const handleNextQuestion = async (autoExpired = false) => {
-    await handleSaveCurrentState(autoExpired);
-    if (currentIdx < attempt.questions.length - 1) {
-      setCurrentIdx(prev => prev + 1);
-    } else {
-      // Completed last question, run final scoring calculations
-      handleFinalSubmission();
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    setIsNavigating(true);
+    try {
+      await handleSaveCurrentState(autoExpired);
+      if (currentIdx < attempt.questions.length - 1) {
+        setCurrentIdx(prev => prev + 1);
+      } else {
+        await handleFinalSubmission(false);
+      }
+    } finally {
+      isNavigatingRef.current = false;
+      setIsNavigating(false);
     }
   };
 
   const handlePrevQuestion = async () => {
-    await handleSaveCurrentState();
-    if (currentIdx > 0) {
-      setCurrentIdx(prev => prev - 1);
+    if (isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    setIsNavigating(true);
+    try {
+      await handleSaveCurrentState();
+      if (currentIdx > 0) {
+        setCurrentIdx(prev => prev - 1);
+      }
+    } finally {
+      isNavigatingRef.current = false;
+      setIsNavigating(false);
     }
   };
 
@@ -236,6 +353,10 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
     setEditorLanguage(lang);
     const starter = activeQuestion.starterCode?.[lang] || "";
     setCode(starter);
+    setAttempt(prev => ({
+      ...prev,
+      selectedLanguage: lang
+    }));
   };
 
   // ==========================================
@@ -261,10 +382,13 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
         setConsoleOutput(data.stdout);
         setTestResults(data.testResults);
         
-        // Save unit test metrics back to attempt state
-        attempt.codingTestsPassedCount = data.passedCount;
-        attempt.codingTestsTotalCount = data.totalCount;
-        attempt.selectedLanguage = editorLanguage;
+        // Save unit test metrics back to attempt state safely
+        setAttempt(prev => ({
+          ...prev,
+          codingTestsPassedCount: data.passedCount,
+          codingTestsTotalCount: data.totalCount,
+          selectedLanguage: editorLanguage
+        }));
       } else {
         setConsoleOutput(`Error compilation metrics:\n ${data.error}`);
       }
@@ -310,12 +434,13 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
   // ==========================================
   // FINAL EVALUATION ENGINE DISPATCH (Module 9)
   // ==========================================
-  const handleFinalSubmission = async () => {
+  const handleFinalSubmission = async (shouldSave = true) => {
     setIsCompiling(true);
     setConsoleOutput("Finalizing all scoring calculations...\nComputing weighted technical scores & verifying certificate registries...");
     
-    // Save last item first
-    await handleSaveCurrentState();
+    if (shouldSave) {
+      await handleSaveCurrentState();
+    }
 
     try {
       const res = await fetch("/api/assessment/complete", {
@@ -388,8 +513,36 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
             <span className="text-slate-500 font-medium">Integrity:</span>
             <span className="font-mono font-bold text-rose-700">{integrityScore}%</span>
           </div>
+
+          {!isFullscreen && (
+            <button
+              onClick={() => {
+                if (document.documentElement.requestFullscreen) {
+                  document.documentElement.requestFullscreen().catch(() => {});
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 border border-rose-300 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-semibold transition cursor-pointer shadow-2xs"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 animate-pulse" />
+              <span>Restore Enforced Fullscreen</span>
+            </button>
+          )}
         </div>
       </header>
+
+      {/* Real-time Overall Assessment Time Progress Bar */}
+      <div className="h-1.5 w-full bg-slate-100 relative z-20" id="overall-pacing-progress-bar">
+        <div 
+          className={`h-full transition-all duration-1000 ease-linear ${
+            overallTimeRatio < 0.15 
+              ? "bg-rose-500 animate-pulse" 
+              : overallTimeRatio < 0.35 
+              ? "bg-amber-500" 
+              : "bg-emerald-500"
+          }`}
+          style={{ width: `${(1 - overallTimeRatio) * 100}%` }}
+        />
+      </div>
 
       {/* Main Grid split: Left question/options, Right Playground */}
       <div className="flex-grow grid grid-cols-1 lg:grid-cols-12 relative z-10 overflow-hidden" id="workspace-layout">
@@ -409,6 +562,91 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
               {activeQuestion.tags.map(tag => (
                 <span key={tag} className="text-[9px] bg-slate-50 border border-slate-200 text-slate-600 font-mono px-2 py-0.5 rounded-md font-medium">{tag}</span>
               ))}
+            </div>
+          </div>
+
+          {/* Real-time Pacing & Progress Monitor Widget */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3" id="pacing-dashboard-card">
+            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+              <span className="flex items-center gap-1.5 text-indigo-700">
+                <Clock className="w-4 h-4 text-indigo-600 animate-pulse" />
+                <span>Pace & Progress Monitor</span>
+              </span>
+              <span className="text-slate-550 font-mono text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold">
+                {completionPercent}% Questions Done
+              </span>
+            </div>
+
+            {/* Interactive Progress Bars */}
+            <div className="space-y-3">
+              {/* Question Completion Bar */}
+              <div>
+                <div className="flex justify-between items-center text-[11px] mb-1">
+                  <span className="text-slate-600 font-medium">Progress by Questions</span>
+                  <span className="font-mono font-bold text-slate-800">{answeredCount} of {attempt.questions.length} completed</span>
+                </div>
+                <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="questions-progress-bar">
+                  <div 
+                    className="h-full bg-indigo-600 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${completionPercent}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Time Remaining Bar */}
+              <div>
+                <div className="flex justify-between items-center text-[11px] mb-1">
+                  <span className="text-slate-600 font-medium">Overall Duration Progress</span>
+                  <span className="font-mono font-bold text-slate-800">{formatTimerValue(overallRemaining)} remaining</span>
+                </div>
+                <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="time-progress-bar">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-1000 ease-linear ${
+                      overallTimeRatio < 0.15 
+                        ? "bg-rose-500 animate-pulse" 
+                        : overallTimeRatio < 0.35 
+                        ? "bg-amber-500" 
+                        : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${(1 - overallTimeRatio) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Current Question Time Bar */}
+              <div>
+                <div className="flex justify-between items-center text-[11px] mb-1">
+                  <span className="text-slate-600 font-medium">Current Question Timeout</span>
+                  <span className={`font-mono font-bold ${questionTimeRatio < 0.2 ? "text-rose-600 animate-pulse" : "text-slate-800"}`}>
+                    {formatTimerValue(questionRemaining)} / {formatTimerValue(activeQuestion.timeAllocation)}
+                  </span>
+                </div>
+                <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="question-time-progress-bar">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-1000 ease-linear ${
+                      questionTimeRatio < 0.2 
+                        ? "bg-rose-500 animate-pulse" 
+                        : questionTimeRatio < 0.4 
+                        ? "bg-amber-500" 
+                        : "bg-indigo-500"
+                    }`}
+                    style={{ width: `${questionTimeRatio * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Pacing Advice Banner */}
+            <div className={`p-3 rounded-lg text-xs flex items-start gap-2.5 transition-colors duration-300 ${
+              pacingWarning 
+                ? "bg-rose-50 border border-rose-200 text-rose-800" 
+                : "bg-indigo-50 border border-indigo-100 text-indigo-800"
+            }`} id="pacing-advice-container">
+              <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${pacingWarning ? "text-rose-600 animate-pulse" : "text-indigo-600"}`} />
+              <div className="space-y-0.5">
+                <span className="font-bold block text-[12px]">{pacingStatus}</span>
+                <span className="text-slate-600 text-[11px] block leading-relaxed">{pacingAdvice}</span>
+              </div>
             </div>
           </div>
 
@@ -557,12 +795,16 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
 
               {/* Editor Workspace */}
               <div className="flex-grow flex relative overflow-hidden h-[45%]" id="editor-lines-row">
-                <div className="w-10 bg-slate-100 border-r border-slate-200 select-none py-4 text-center font-mono text-[10px] text-slate-400 leading-relaxed text-right pr-2.5">
-                  {Array.from({ length: 25 }, (_, i) => i + 1).map(n => <div key={n}>{n}</div>)}
+                <div 
+                  ref={lineNumbersRef}
+                  className="w-10 bg-slate-100 border-r border-slate-200 select-none py-4 text-center font-mono text-[10px] text-slate-400 leading-relaxed text-right pr-2.5 overflow-hidden"
+                >
+                  {Array.from({ length: Math.max(25, code.split("\n").length) }, (_, i) => i + 1).map(n => <div key={n}>{n}</div>)}
                 </div>
                 <textarea
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
+                  onScroll={handleTextareaScroll}
                   className="flex-grow bg-white p-4 outline-none border-none text-slate-800 font-mono text-xs leading-relaxed resize-none h-full"
                   spellCheck="false"
                   placeholder="// Complete your programming assignment here..."
