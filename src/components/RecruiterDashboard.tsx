@@ -6,6 +6,26 @@
 import React, { useState, useEffect } from "react";
 import { UserProfile, CandidateSearchFilter } from "../types";
 import { 
+  ResponsiveContainer, 
+  AreaChart, 
+  Area, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  PieChart, 
+  Pie, 
+  Cell, 
+  RadarChart, 
+  PolarGrid, 
+  PolarAngleAxis, 
+  PolarRadiusAxis, 
+  Radar 
+} from "recharts";
+import { 
   Briefcase, 
   Search, 
   SlidersHorizontal, 
@@ -584,52 +604,167 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
                 </div>
               </div>
 
-              {/* Conversion funnel and domain heatmap splits */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4" id="analytics-split">
+              {/* Visualizations Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" id="analytics-split">
                 
-                {/* 1. Funnel */}
-                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="funnel-analytics">
-                  <h3 className="text-xs font-bold text-slate-900 mb-3 flex items-center gap-2">
-                    <Layers className="w-4.5 h-4.5 text-indigo-600" />
-                    <span>Hiring Funnel Conversion Stats</span>
+                {/* 1. Domain Average Score Bar Chart */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="domain-avg-score-chart-card">
+                  <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-4.5 h-4.5 text-indigo-600 animate-pulse" />
+                    <span>Domain Screener Average Scores (%)</span>
                   </h3>
-                  <div className="space-y-3" id="funnel-container">
-                    {analyticsData.funnel.map((fn: any) => (
-                      <div key={fn.stage} className="space-y-1">
-                        <div className="flex justify-between text-xs text-slate-600">
-                          <span>{fn.stage}</span>
-                          <span className="font-mono font-bold text-slate-800">{fn.count} <span className="text-slate-400 font-normal">({fn.pct}%)</span></span>
-                        </div>
-                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-indigo-600" style={{ width: `${fn.pct}%` }}></div>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="h-64 w-full font-mono text-xs">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={analyticsData.domainHeatmap || []}
+                        layout="vertical"
+                        margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={true} stroke="#f1f5f9" />
+                        <XAxis type="number" domain={[0, 100]} stroke="#64748b" />
+                        <YAxis 
+                          dataKey="name" 
+                          type="category" 
+                          width={110} 
+                          stroke="#64748b"
+                          tickFormatter={(value) => value.split(" ")[0] + "..."}
+                        />
+                        <Tooltip 
+                          contentStyle={{ background: "#0f172a", borderRadius: "8px", border: "none", color: "#f8fafc" }}
+                          formatter={(value: any) => [`${value}%`, "Avg Score"]}
+                        />
+                        <Bar dataKey="avgScore" fill="#4f46e5" radius={[0, 4, 4, 0]}>
+                          {(analyticsData.domainHeatmap || []).map((entry: any, index: number) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={entry.avgScore >= 80 ? "#10b981" : entry.avgScore >= 75 ? "#6366f1" : "#f59e0b"} 
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
 
-                {/* 2. Heatmap */}
-                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="heatmap-analytics">
-                  <h3 className="text-xs font-bold text-slate-900 mb-3 flex items-center gap-2">
-                    <TrendingUp className="w-4.5 h-4.5 text-indigo-600" />
-                    <span>Domain Screening Distributions</span>
+                {/* 2. Candidate Proficiency Distribution (Pie Chart) */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="proficiency-pie-chart-card">
+                  <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <Users className="w-4.5 h-4.5 text-indigo-600" />
+                    <span>Candidate Experience Distribution</span>
                   </h3>
-                  <div className="space-y-2.5" id="heatmap-container">
-                    {analyticsData.domainHeatmap.map((domain: any) => (
-                      <div key={domain.name} className="flex justify-between items-center text-xs p-2 bg-slate-50 border border-slate-150 rounded-lg">
-                        <span className="font-bold text-slate-800 text-[11px]">{domain.name}</span>
-                        <div className="flex items-center gap-3 text-right">
-                          <div>
-                            <span className="text-[9px] text-slate-400 block leading-tight">Assessments</span>
-                            <span className="font-mono font-bold text-slate-700 text-[11px]">{domain.count}</span>
-                          </div>
-                          <div>
-                            <span className="text-[9px] text-slate-400 block leading-tight">Avg Rating</span>
-                            <span className="font-mono font-bold text-emerald-700 text-[11px]">{domain.avgScore}%</span>
-                          </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                    <div className="sm:col-span-7 h-56 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={analyticsData.proficiencyDistribution || [
+                              { name: "Junior (0-2y)", count: 12 },
+                              { name: "Mid-Level (2-5y)", count: 24 },
+                              { name: "Senior (5-10y)", count: 18 },
+                              { name: "Advanced (10y+)", count: 8 }
+                            ]}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={4}
+                            dataKey="count"
+                          >
+                            {[0, 1, 2, 3].map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={["#818cf8", "#4f46e5", "#3730a3", "#10b981"][index % 4]} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ background: "#0f172a", borderRadius: "8px", border: "none", color: "#f8fafc" }}
+                            formatter={(value: any) => [`${value} candidates`, "Count"]}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="sm:col-span-5 space-y-2">
+                      {(analyticsData.proficiencyDistribution || [
+                        { name: "Junior (0-2y)", count: 12 },
+                        { name: "Mid-Level (2-5y)", count: 24 },
+                        { name: "Senior (5-10y)", count: 18 },
+                        { name: "Advanced (10y+)", count: 8 }
+                      ]).map((item: any, i: number) => (
+                        <div key={item.name} className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1.5 text-slate-600">
+                            <span 
+                              className="w-2.5 h-2.5 rounded-full shrink-0" 
+                              style={{ backgroundColor: ["#818cf8", "#4f46e5", "#3730a3", "#10b981"][i % 4] }} 
+                            />
+                            <span>{item.name}</span>
+                          </span>
+                          <span className="font-mono font-bold text-slate-800">{item.count}</span>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Candidate Score Buckets Distribution */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="score-dist-chart-card">
+                  <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <Award className="w-4.5 h-4.5 text-emerald-600" />
+                    <span>Candidate Score Profile Distribution</span>
+                  </h3>
+                  <div className="h-60 w-full font-mono text-[10px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={analyticsData.scoreDistribution || [
+                          { name: "Below 60%", count: 5 },
+                          { name: "60% - 75%", count: 18 },
+                          { name: "75% - 90%", count: 32 },
+                          { name: "90% - 100%", count: 14 }
+                        ]}
+                        margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis dataKey="name" stroke="#64748b" />
+                        <YAxis stroke="#64748b" />
+                        <Tooltip 
+                          contentStyle={{ background: "#0f172a", borderRadius: "8px", border: "none", color: "#f8fafc" }}
+                        />
+                        <Area type="monotone" dataKey="count" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorCount)" name="Candidates" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* 4. Funnel Area Chart representation */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="funnel-analytics">
+                  <h3 className="text-xs font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <Layers className="w-4.5 h-4.5 text-indigo-600" />
+                    <span>Recruiting Pipeline Funnel Analytics</span>
+                  </h3>
+                  <div className="h-60 w-full font-mono text-[10px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={analyticsData.funnel || []}
+                        margin={{ top: 10, right: 10, left: 0, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                        <XAxis dataKey="stage" stroke="#64748b" />
+                        <YAxis stroke="#64748b" />
+                        <Tooltip 
+                          contentStyle={{ background: "#0f172a", borderRadius: "8px", border: "none", color: "#f8fafc" }}
+                          formatter={(value: any, name: string, props: any) => {
+                            if (name === "pct") return [`${value}%`, "Conversion Rate"];
+                            return [value, "Count"];
+                          }}
+                        />
+                        <Legend wrapperStyle={{ fontSize: "10px" }} />
+                        <Bar dataKey="count" name="Candidate Count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="pct" name="Conversion %" fill="#a5b4fc" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
 
