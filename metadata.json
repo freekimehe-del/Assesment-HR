@@ -1,0 +1,6 @@
+{
+  "name": "Technical Resource Screening & Assessment Platform",
+  "description": "A comprehensive SaaS platform enabling organizations to assess, screen, benchmark, and certify technical talent with custom coding tests, secure browser proctoring, and automated AI-powered code reviews.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
