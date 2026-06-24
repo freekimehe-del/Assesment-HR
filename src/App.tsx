@@ -108,6 +108,87 @@ function Toast({ toast, onClose }: ToastProps) {
   );
 }
 
+const playNotificationSound = (type: string) => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const ctx = new AudioContextClass();
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+
+    const now = ctx.currentTime;
+
+    if (type === "certificate") {
+      // Elegant, uplifting major chord chime for certificates
+      const playTone = (freq: number, startOffset: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + startOffset);
+        
+        gainNode.gain.setValueAtTime(0, now + startOffset);
+        gainNode.gain.linearRampToValueAtTime(0.08, now + startOffset + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + startOffset + duration);
+        
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        
+        osc.start(now + startOffset);
+        osc.stop(now + startOffset + duration);
+      };
+      
+      // Beautiful ascending arpeggio (C major vibe)
+      playTone(392.00, 0, 0.8);      // G4
+      playTone(523.25, 0.08, 0.8);   // C5
+      playTone(659.25, 0.16, 1.0);   // E5
+      playTone(1046.50, 0.24, 1.2);  // C6 (high chime)
+    } else if (type === "request") {
+      // Soft, warm dual-tone alert ping for recruitment requests
+      const playTone = (freq: number, startOffset: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + startOffset);
+        
+        gainNode.gain.setValueAtTime(0, now + startOffset);
+        gainNode.gain.linearRampToValueAtTime(0.06, now + startOffset + 0.03);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + startOffset + duration);
+        
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        
+        osc.start(now + startOffset);
+        osc.stop(now + startOffset + duration);
+      };
+
+      playTone(440.00, 0, 0.5);      // A4
+      playTone(587.33, 0.1, 0.6);    // D5
+    } else {
+      // Short default tactile warm tick for generic alerts
+      const osc = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(600, now);
+      
+      gainNode.gain.setValueAtTime(0.04, now);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
+      
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      osc.start(now);
+      osc.stop(now + 0.15);
+    }
+  } catch (err) {
+    console.warn("Audio Context alert blocked or uninitialized:", err);
+  }
+};
+
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [view, setView] = useState<"auth" | "candidate" | "recruiter" | "admin" | "assessment" | "certificate">("auth");
@@ -122,6 +203,7 @@ export default function App() {
     const id = `toast-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const newToast = { ...toast, id, duration: toast.duration || 5000 };
     setToasts(prev => [...prev, newToast]);
+    playNotificationSound(toast.type);
   };
 
   const removeToast = (id: string) => {
@@ -277,11 +359,11 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 selection:bg-indigo-500 selection:text-white flex flex-col font-sans" id="app-root">
       
-      {/* Dev Sandbox System Interconnection Bar */}
+      {/* Candidate Assessment Software Test Bar */}
       <div className="bg-slate-900 text-slate-100 px-4 py-2 text-xs flex flex-col md:flex-row gap-2 justify-between items-center border-b border-slate-800 shrink-0 sticky top-0 z-50 shadow-md">
         <div className="flex items-center gap-2">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span className="font-mono tracking-wider font-semibold uppercase text-slate-300">SYSTEM INTERCONNECTION HUB (DEV SANDBOX)</span>
+          <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+          <span className="font-sans font-bold tracking-tight text-white">Candidate Assessment Software</span>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-slate-400">Switch role on-the-fly to test interconnected feedback loops:</span>
