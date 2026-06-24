@@ -2119,6 +2119,186 @@ app.get("/api/certificate/verify/:hash", (req: Request, res: Response) => {
   });
 });
 
+// ==========================================
+// AI MOCK INTERVIEW API (Module 15)
+// ==========================================
+app.post("/api/assessment/interview/start", async (req: Request, res: Response) => {
+  const { attemptId } = req.body;
+  const attempt = dbAttempts.find(a => a.id === attemptId);
+  if (!attempt) {
+    return res.status(404).json({ error: "Attempt record not found." });
+  }
+
+  // Find coding question
+  const codingQuestion = attempt.questions.find(q => q.type === "coding");
+  if (!codingQuestion) {
+    return res.status(400).json({ error: "No coding question found in this assessment to conduct an interview on." });
+  }
+
+  const userCode = attempt.answers[codingQuestion.id] || "";
+  const codingPrompt = codingQuestion.codingPrompt || codingQuestion.description;
+  const passedTests = attempt.codingTestsPassedCount || 0;
+  const totalTests = attempt.codingTestsTotalCount || 3;
+
+  const interviewerIntroduction = `Hi ${attempt.candidateName}! Congratulations on completing your ${attempt.category} coding test. I'm your AI technical interviewer today. I've reviewed your solution to the "${codingQuestion.title}" challenge where you passed ${passedTests} of ${totalTests} test cases. Let's discuss your design choices.`;
+
+  if (aiClient) {
+    try {
+      const prompt = `You are a premium, highly professional but friendly Senior Technical Interviewer at a top tier software enterprise.
+The candidate ${attempt.candidateName} has just completed a coding challenge.
+Challenge Title: ${codingQuestion.title}
+Challenge Goal/Prompt: ${codingPrompt}
+Candidate Code Submission:
+\`\`\`
+${userCode}
+\`\`\`
+Test Cases Passed: ${passedTests} / ${totalTests}
+
+Please generate the first follow-up interview question to ask the candidate.
+Rules:
+1. Be welcoming, professional, and friendly.
+2. Direct your question specifically at their submitted code (e.g., discuss their choice of data structures, approach, time/space complexity, or how they would handle a specific edgecase).
+3. Keep the response brief (maximum 2-3 sentences).
+4. Do NOT output any markdown code blocks in your question.
+5. Address the candidate as ${attempt.candidateName}.`;
+
+      const response = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          systemInstruction: "You are a professional software engineering interviewer conducting a live technical chat-based follow-up interview.",
+        }
+      });
+
+      const firstQuestion = response.text?.trim() || "Could you start by walking me through your general approach to this problem and why you chose this specific implementation strategy?";
+      return res.json({
+        introduction: interviewerIntroduction,
+        question: firstQuestion,
+        codingQuestionTitle: codingQuestion.title,
+        codingQuestionPrompt: codingPrompt,
+        candidateCode: userCode
+      });
+    } catch (err) {
+      console.error("Failed to generate first interview question with Gemini, using fallback.", err);
+    }
+  }
+
+  // Fallback if Gemini is not available or errors out
+  const fallbackQuestion = `I see you implemented a solution for "${codingQuestion.title}". Could you explain the time and space complexity of your approach, and how it handles potential large inputs or memory boundaries?`;
+  res.json({
+    introduction: interviewerIntroduction,
+    question: fallbackQuestion,
+    codingQuestionTitle: codingQuestion.title,
+    codingQuestionPrompt: codingPrompt,
+    candidateCode: userCode
+  });
+});
+
+app.post("/api/assessment/interview/chat", async (req: Request, res: Response) => {
+  const { attemptId, chatHistory } = req.body; // chatHistory is an array of { role: 'user' | 'assistant', content: string }
+  const attempt = dbAttempts.find(a => a.id === attemptId);
+  if (!attempt) {
+    return res.status(404).json({ error: "Attempt record not found." });
+  }
+
+  const codingQuestion = attempt.questions.find(q => q.type === "coding");
+  if (!codingQuestion) {
+    return res.status(400).json({ error: "No coding question found." });
+  }
+
+  const userCode = attempt.answers[codingQuestion.id] || "";
+  const codingPrompt = codingQuestion.codingPrompt || codingQuestion.description;
+
+  // We want to limit the interview to about 3 turns of questions, then provide feedback.
+  const userTurns = chatHistory.filter((m: any) => m.role === "user").length;
+  const isLastTurn = userTurns >= 3;
+
+  if (aiClient) {
+    try {
+      let prompt = "";
+      if (isLastTurn) {
+        prompt = `You are a premium, highly professional Senior Technical Interviewer. The mock interview with ${attempt.candidateName} is now wrapping up.
+Coding Challenge: ${codingQuestion.title}
+Candidate Code:
+\`\`\`
+${userCode}
+\`\`\`
+
+Here is the conversation history:
+${chatHistory.map((m: any) => `${m.role === 'user' ? 'Candidate' : 'Interviewer'}: ${m.content}`).join("\n")}
+
+Please provide a highly supportive, constructive closing response.
+It must include:
+1. An encouraging "Thank you" and wrap-up.
+2. "Technical Strengths Observed": Highlight 1-2 positive aspects of their code or their verbal explanations.
+3. "Growth Recommendations": Highlight 1 specific architectural or performance improvement they could focus on next.
+
+Keep the summary brief, professional, and directly address the candidate as ${attempt.candidateName}. Do not write more than 4-5 sentences in total. Use elegant formatting.`;
+      } else {
+        prompt = `You are a premium, highly professional Senior Technical Interviewer. Continue the interactive technical follow-up interview with ${attempt.candidateName}.
+Coding Challenge: ${codingQuestion.title}
+Candidate Code:
+\`\`\`
+${userCode}
+\`\`\`
+
+Here is the conversation history:
+${chatHistory.map((m: any) => `${m.role === 'user' ? 'Candidate' : 'Interviewer'}: ${m.content}`).join("\n")}
+
+Rules:
+1. Respond to the candidate's last answer with a very brief, professional acknowledgement (e.g. "Excellent explanation", "That makes sense").
+2. Ask 1 follow-up technical question based on their answer, or if their answer was incomplete/incorrect, guide them or ask for clarification.
+3. Keep the response brief (maximum 2-3 sentences).
+4. Do NOT output any markdown code blocks.
+5. Address the candidate as ${attempt.candidateName}.`;
+      }
+
+      const response = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          systemInstruction: "You are a professional software engineering interviewer conducting a live technical chat-based follow-up interview.",
+        }
+      });
+
+      const reply = response.text?.trim() || (isLastTurn ? "Thank you for sharing your thoughts today! You did a great job explaining your implementation decisions. Keep up the great work!" : "That is a very reasonable approach. How would you handle any potential concurrency or scaling issues with that design?");
+      return res.json({
+        reply,
+        completed: isLastTurn
+      });
+    } catch (err) {
+      console.error("Failed to generate chat response with Gemini, using fallback.", err);
+    }
+  }
+
+  // Fallback chat response
+  let reply = "";
+  if (isLastTurn) {
+    reply = `Thank you for completing this technical follow-up interview, ${attempt.candidateName}!
+
+Technical Strengths Observed:
+- Good clarity in explaining data structures and modular design choices.
+- Demonstrated awareness of trade-offs regarding time vs space complexity.
+
+Growth Recommendations:
+- Consider diving deeper into concurrency locks or resource safety boundaries for distributed environments.
+- Practice optimizing array structures under tighter cache-locality configurations.
+
+It was a pleasure discussing engineering with you today. Best of luck!`;
+  } else {
+    const questions = [
+      "That makes sense. If this solution were to be deployed as a microservice, what potential bottleneck or scaling issue would you anticipate first?",
+      "Interesting perspective. If you had to refactor this solution to run on a multi-threaded system, how would you ensure thread-safety?"
+    ];
+    reply = questions[userTurns - 1] || "That's a solid explanation. Can you elaborate on any edge-case inputs that might cause your solution to throw an error or behave unexpectedly?";
+  }
+
+  res.json({
+    reply,
+    completed: isLastTurn
+  });
+});
+
 // Support fallback endpoints to clear history / reset
 app.post("/api/admin/reset", (req: Request, res: Response) => {
   dbUsers = [...DEFAULT_USERS];

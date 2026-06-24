@@ -33,6 +33,7 @@ import {
   Brain
 } from "lucide-react";
 import StrengthsWeaknessesModal from "./StrengthsWeaknessesModal";
+import MockInterviewModal from "./MockInterviewModal";
 
 interface CandidateDashboardProps {
   user: UserProfile;
@@ -52,6 +53,10 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
   // AI Strengths & Weaknesses Modal States
   const [selectedAnalysisAttemptId, setSelectedAnalysisAttemptId] = useState<string | null>(null);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
+
+  // AI Mock Interview States
+  const [selectedInterviewAttemptId, setSelectedInterviewAttemptId] = useState<string | null>(null);
+  const [isInterviewModalOpen, setIsInterviewModalOpen] = useState(false);
 
   // Profile Form States
   const [fullName, setFullName] = useState(props.user.fullName || "");
@@ -1080,17 +1085,33 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                                 }`}>
                                   {att.skillRatingLevel}
                                 </span>
-                                <button
-                                  onClick={() => {
-                                    setSelectedAnalysisAttemptId(att.id);
-                                    setIsAnalysisModalOpen(true);
-                                  }}
-                                  className="mt-1 flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
-                                  title="View AI Advisor Strengths & Weaknesses analysis report"
-                                >
-                                  <Sparkles className="w-3 h-3 text-indigo-500 animate-pulse" />
-                                  <span>AI Analysis</span>
-                                </button>
+                                <div className="flex flex-col gap-1 items-start mt-1">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedAnalysisAttemptId(att.id);
+                                      setIsAnalysisModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-1 text-[10px] font-bold text-indigo-650 hover:text-indigo-800 transition cursor-pointer"
+                                    title="View AI Advisor Strengths & Weaknesses analysis report"
+                                  >
+                                    <Sparkles className="w-3 h-3 text-indigo-500 animate-pulse" />
+                                    <span>AI Analysis</span>
+                                  </button>
+                                  
+                                  {att.questions && att.questions.some(q => q.type === "coding") && (
+                                    <button
+                                      onClick={() => {
+                                        setSelectedInterviewAttemptId(att.id);
+                                        setIsInterviewModalOpen(true);
+                                      }}
+                                      className="flex items-center gap-1 text-[10px] font-bold text-emerald-750 hover:text-emerald-900 transition cursor-pointer"
+                                      title="Start AI follow-up voice or text mock interview session"
+                                    >
+                                      <Brain className="w-3 h-3 text-emerald-500 animate-pulse" />
+                                      <span>AI Mock Interview</span>
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             ) : (
                               <span className="text-slate-400 font-semibold italic capitalize">{att.status}</span>
@@ -1357,6 +1378,16 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
         onClose={() => setIsAnalysisModalOpen(false)}
         attemptId={selectedAnalysisAttemptId}
       />
+
+      {isInterviewModalOpen && selectedInterviewAttemptId && (
+        <MockInterviewModal
+          attemptId={selectedInterviewAttemptId}
+          onClose={() => {
+            setIsInterviewModalOpen(false);
+            setSelectedInterviewAttemptId(null);
+          }}
+        />
+      )}
     </div>
   );
 }
