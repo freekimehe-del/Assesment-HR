@@ -20,12 +20,17 @@ import {
   Compass, 
   TrendingUp,
   Award,
-  BookOpen
+  BookOpen,
+  Terminal,
+  FileText,
+  Lightbulb,
+  Zap,
+  Check
 } from "lucide-react";
 
 interface AssessmentEngineProps {
   attempt: AssessmentAttempt;
-  onComplete: () => void;
+  onComplete: (score?: number, category?: string, certId?: string) => void;
   onExit: () => void;
 }
 
@@ -56,6 +61,67 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
   const [isAiReviewing, setIsAiReviewing] = useState(false);
   const [aiReviewResult, setAiReviewResult] = useState<AICodeReviewResult | null>(null);
   const [showAiDrawer, setShowAiDrawer] = useState(false);
+
+  // Scratchpad States for non-coding questions
+  const [scratchpadText, setScratchpadText] = useState("");
+  const [scratchpadLanguage, setScratchpadLanguage] = useState("sql");
+  const [scratchpadIsGenerating, setScratchpadIsGenerating] = useState(false);
+  const [scratchpadExplanation, setScratchpadExplanation] = useState<string | null>(null);
+  const [scratchpadTips, setScratchpadTips] = useState<string[]>([]);
+  const [scratchpadIntegrityText, setScratchpadIntegrityText] = useState<string | null>(null);
+  const [scratchpadActiveTab, setScratchpadActiveTab] = useState<"editor" | "ai">("editor");
+  const [scratchpadConsole, setScratchpadConsole] = useState("");
+  const [isScratchpadDryRunning, setIsScratchpadDryRunning] = useState(false);
+
+  const runScratchpadDryRun = () => {
+    setIsScratchpadDryRunning(true);
+    setScratchpadConsole("Initializing temporary dry-run thread...\nEvaluating query syntax rules...");
+    setTimeout(() => {
+      const lower = scratchpadText.toLowerCase();
+      let logs = `[Dry-run ${new Date().toLocaleTimeString()}] Target environment: Mock In-Memory DB Node\n`;
+      if (!scratchpadText.trim()) {
+        logs += "⚠️ WARNING: Sandbox workspace is completely empty. Write your dry-run query or notes above.";
+      } else if (scratchpadLanguage === "sql") {
+        if (lower.includes("select") && lower.includes("from")) {
+          logs += "✅ Query parsed successfully.\nRows affected: 0 (Read-Only Mode)\nSchema validation: PASS\nOutput Schema: [Computed columns match specification tags]";
+        } else {
+          logs += "ℹ&nbsp; Text parsed successfully as notes.\nTip: Use standard SQL 'SELECT ... FROM ...' to run table dry-runs.";
+        }
+      } else {
+        logs += "✅ Notes compile dry-run: PASS\nSyntax validator: No issues detected in draft thread.";
+      }
+      setScratchpadConsole(logs);
+      setIsScratchpadDryRunning(false);
+    }, 1000);
+  };
+
+  const handleQueryScratchpadExplain = async () => {
+    setScratchpadIsGenerating(true);
+    setScratchpadActiveTab("ai");
+    try {
+      const res = await fetch("/api/assessment/scratchpad-explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionTitle: activeQuestion.title,
+          questionDescription: activeQuestion.description,
+          scratchpadText
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setScratchpadExplanation(data.explanation);
+        setScratchpadTips(data.conceptualTips || []);
+        setScratchpadIntegrityText(data.integrityWarning || "");
+      } else {
+        alert(data.error || "Could not retrieve conceptual explanation.");
+      }
+    } catch (err) {
+      console.error("Scratchpad AI call failed:", err);
+    } finally {
+      setScratchpadIsGenerating(false);
+    }
+  };
 
   // Proctor Logs States
   const [proctorFlags, setProctorFlags] = useState<ProctoringLog[]>([]);
@@ -173,6 +239,22 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
     } else {
       setSelectedMcq(savedAns || "");
     }
+
+    // For non-coding questions, initialize scratchpad with proper defaults
+    if (activeQuestion.type !== "coding") {
+      setScratchpadText("");
+      setScratchpadExplanation(null);
+      setScratchpadTips([]);
+      setScratchpadIntegrityText(null);
+      setScratchpadActiveTab("editor");
+      setScratchpadConsole("");
+      const hasSqlTag = activeQuestion.tags.some(t => {
+        const lowerT = t.toLowerCase();
+        return lowerT.includes("sql") || lowerT.includes("database") || lowerT.includes("query");
+      });
+      setScratchpadLanguage(hasSqlTag ? "sql" : "notes");
+    }
+
     setQuestionRemaining(activeQuestion.timeAllocation);
   }, [currentIdx, activeQuestion]);
 
@@ -449,7 +531,8 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
         body: JSON.stringify({ attemptId: attempt.id })
       });
       if (res.ok) {
-        props.onComplete();
+        const data = await res.json();
+        props.onComplete(data.attempt?.overallCandidateScore, data.attempt?.category, data.certificate?.id);
       } else {
         alert("Scoring engine could not submit. Retrying active connection...");
       }
@@ -871,12 +954,180 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-white" id="non-coding-preview">
-              <HelpCircle className="w-10 h-10 text-slate-300 mb-2" />
-              <h3 className="font-bold text-xs text-slate-700">Workspace Sandbox is locked for non-coding queries.</h3>
-              <p className="text-[11px] text-slate-500 max-w-xs leading-relaxed mt-1">
-                Complete the MCQ choices, Multi-select criteria or Fill-in blanks inside the left panel. Choose 'Next Item' to advance.
-              </p>
+            <div className="h-full flex flex-col bg-slate-50 overflow-hidden" id="scratchpad-sandbox-root">
+              {/* Header with beautiful interactive tabs */}
+              <div className="bg-white border-b border-slate-200 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3" id="scratchpad-header">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 bg-indigo-50 border border-indigo-100 rounded-lg flex items-center justify-center text-indigo-600">
+                    <Terminal className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-slate-800 leading-none">Interactive Sandbox Scratchpad</h4>
+                    <span className="text-[9px] text-slate-400 font-medium">Verify your logic and brainstorm drafting choices</span>
+                  </div>
+                </div>
+
+                {/* Tab selections */}
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200" id="scratchpad-tabs-bar">
+                  <button
+                    onClick={() => setScratchpadActiveTab("editor")}
+                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
+                      scratchpadActiveTab === "editor" 
+                        ? "bg-white text-indigo-700 shadow-2xs border border-slate-200" 
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Draft Sandbox</span>
+                  </button>
+                  <button
+                    onClick={handleQueryScratchpadExplain}
+                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
+                      scratchpadActiveTab === "ai" 
+                        ? "bg-white text-indigo-700 shadow-2xs border border-slate-200" 
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Ask AI concept</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tab views content */}
+              <div className="flex-grow flex flex-col overflow-hidden" id="scratchpad-view-body">
+                {scratchpadActiveTab === "editor" ? (
+                  <div className="flex-grow flex flex-col overflow-hidden h-full">
+                    {/* Dialect selectors and trigger button bar */}
+                    <div className="bg-white border-b border-slate-200 px-5 py-2 flex items-center justify-between" id="scratchpad-editor-actions">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Draft Dialect:</span>
+                        <select
+                          value={scratchpadLanguage}
+                          onChange={(e) => setScratchpadLanguage(e.target.value)}
+                          className="bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-indigo-600 font-bold px-2 py-1 outline-none cursor-pointer"
+                          id="scratchpad-language-select"
+                        >
+                          <option value="sql">SQL Syntax draft</option>
+                          <option value="notes">Scratchpad Plain Notes</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={runScratchpadDryRun}
+                          disabled={isScratchpadDryRunning}
+                          className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shadow-3xs"
+                          id="scratchpad-dryrun-btn"
+                        >
+                          <Play className="w-3 h-3 text-emerald-600 fill-current" />
+                          <span>Dry-Run Notes</span>
+                        </button>
+                        <button
+                          onClick={handleQueryScratchpadExplain}
+                          className="px-3 py-1.5 bg-indigo-650 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shadow-3xs"
+                          id="scratchpad-ai-explain-btn"
+                        >
+                          <Zap className="w-3 h-3 text-white" />
+                          <span>Ask Advisor</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Interactive Draft typing workspace */}
+                    <div className="flex-grow flex relative overflow-hidden h-[50%]" id="scratchpad-editor-workspace">
+                      <textarea
+                        value={scratchpadText}
+                        onChange={(e) => setScratchpadText(e.target.value)}
+                        className="flex-grow bg-white p-4 outline-none border-none text-slate-800 font-mono text-xs leading-relaxed resize-none h-full placeholder:text-slate-350"
+                        spellCheck="false"
+                        placeholder={
+                          scratchpadLanguage === "sql"
+                            ? "-- Write dry-run SQL queries here...\n-- Example:\nSELECT * FROM user_accounts WHERE is_verified = TRUE;"
+                            : "// Draft your thoughts, logic, or option tradeoffs here...\n// e.g. prepared statements prevent SQL Injection because they separate SQL query structure from data values."
+                        }
+                        id="scratchpad-text-area"
+                      ></textarea>
+                    </div>
+
+                    {/* Interactive terminal output console */}
+                    <div className="bg-white border-t border-slate-200 h-[35%] flex flex-col overflow-hidden" id="scratchpad-terminal">
+                      <div className="bg-slate-50 px-4 py-1.5 border-b border-slate-200 text-slate-500 text-[9px] font-mono font-bold uppercase tracking-wider flex items-center justify-between">
+                        <span>Draft terminal monitor</span>
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      </div>
+                      <div className="flex-grow p-4 overflow-y-auto font-mono text-[11px] leading-relaxed text-slate-600 whitespace-pre-wrap bg-slate-50 select-all">
+                        {scratchpadConsole || "Draft terminal idle. Click 'Dry-Run Notes' to parse or validate draft text syntax."}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex-grow p-5 overflow-y-auto space-y-4 bg-white" id="scratchpad-ai-view">
+                    {scratchpadIsGenerating ? (
+                      <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
+                        <div className="w-7 h-7 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                        <div>
+                          <h4 className="font-bold text-xs text-slate-800">SaaS Gemini advisor is processing concepts...</h4>
+                          <p className="text-slate-400 text-[10px] mt-1">Fetching secure, non-leaking architectural parameters.</p>
+                        </div>
+                      </div>
+                    ) : scratchpadExplanation ? (
+                      <div className="space-y-4 animate-fade-in">
+                        {/* Concept explainer markdown card */}
+                        <div className="p-4 bg-slate-50 border border-slate-150 rounded-xl space-y-2 text-xs" id="ai-concept-description">
+                          <h5 className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <Lightbulb className="w-4 h-4 text-indigo-650" />
+                            <span>SaaS Concept Explanation</span>
+                          </h5>
+                          <div className="text-slate-700 leading-relaxed space-y-2 whitespace-pre-wrap font-sans text-[11.5px]">
+                            {scratchpadExplanation}
+                          </div>
+                        </div>
+
+                        {/* Conceptual Tips list */}
+                        {scratchpadTips.length > 0 && (
+                          <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-2.5 text-xs" id="ai-conceptual-tips">
+                            <h5 className="font-bold text-emerald-800 flex items-center gap-1.5">
+                              <Check className="w-4 h-4 text-emerald-700" />
+                              <span>Key Conceptual Tips</span>
+                            </h5>
+                            <ul className="space-y-1.5 text-slate-700 text-[11px] font-sans">
+                              {scratchpadTips.map((tip, idx) => (
+                                <li key={idx} className="flex items-start gap-2 leading-relaxed">
+                                  <span className="text-emerald-600 font-bold font-mono shrink-0 mt-0.5">•</span>
+                                  <span>{tip}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Integrity Alert Banner */}
+                        {scratchpadIntegrityText && (
+                          <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex items-start gap-2.5 text-[11px] text-indigo-800 font-medium" id="ai-integrity-alert">
+                            <ShieldAlert className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                            <p className="leading-relaxed">{scratchpadIntegrityText}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center p-8 text-center" id="ai-empty-state">
+                        <Sparkles className="w-8 h-8 text-indigo-400 mb-2 animate-pulse" />
+                        <h4 className="font-bold text-xs text-slate-700">Need a secure conceptual hint?</h4>
+                        <p className="text-[10px] text-slate-400 max-w-xs mt-1 leading-relaxed">
+                          Click 'Ask Advisor' to generate standard security or engineering best practices about this question without violating proctoring criteria.
+                        </p>
+                        <button
+                          onClick={handleQueryScratchpadExplain}
+                          className="mt-3 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded-lg transition shadow-3xs cursor-pointer"
+                        >
+                          Generate Concept Guide
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </section>

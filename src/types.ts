@@ -170,3 +170,14 @@ export interface CandidateSearchFilter {
   location: string;
   certifiedOnly: boolean;
 }
+
+export interface AssessmentRequest {
+  id: string;
+  candidateId: string;
+  recruiterName: string;
+  companyName: string;
+  category: string;
+  difficulty: string;
+  requestedAt: string;
+  status: "pending" | "dismissed" | "completed";
+}

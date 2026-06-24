@@ -231,6 +231,46 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
   // Subscription upgrade state
   const [pricingSuccess, setPricingSuccess] = useState<string | null>(null);
 
+  // Assessment Request States
+  const [requestingCandId, setRequestingCandId] = useState<string | null>(null);
+  const [reqCategory, setReqCategory] = useState<string>("Full Stack Development");
+  const [reqDifficulty, setReqDifficulty] = useState<string>("mid");
+  const [reqSuccessMsg, setReqSuccessMsg] = useState<string | null>(null);
+  const [reqLoading, setReqLoading] = useState<boolean>(false);
+
+  const handleSendAssessmentRequest = async (candidateId: string) => {
+    setReqLoading(true);
+    setReqSuccessMsg(null);
+    try {
+      const res = await fetch("/api/assessment/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId,
+          category: reqCategory,
+          difficulty: reqDifficulty,
+          recruiterName: props.user.fullName,
+          companyName: props.user.companyName || "Vortex Tech Labs"
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setReqSuccessMsg("Assessment request successfully transmitted!");
+        setTimeout(() => {
+          setRequestingCandId(null);
+          setReqSuccessMsg(null);
+        }, 2500);
+        fetchNotifications();
+      } else {
+        alert(data.error || "Failed to send assessment request.");
+      }
+    } catch (err) {
+      console.error("Error sending assessment request:", err);
+    } finally {
+      setReqLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchCandidates();
     fetchAnalytics();
@@ -616,9 +656,9 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
                   )}
                 </div>
 
-                <div className="divide-y divide-slate-100" id="candidates-list">
+                 <div className="divide-y divide-slate-100" id="candidates-list">
                   {candidates.map((cand) => (
-                    <div key={cand.id} className="py-4.5 flex flex-col md:flex-row md:items-center justify-between gap-4 first:pt-0 last:pb-0" id={`cand-row-${cand.id}`}>
+                    <div key={cand.id} className="py-4.5 flex flex-col md:flex-row md:items-center justify-between gap-4 first:pt-0 last:pb-0 relative" id={`cand-row-${cand.id}`}>
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-2.5">
                           <h4 className="font-bold text-xs text-slate-900">{cand.fullName}</h4>
@@ -688,6 +728,81 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
                               title="Inspect verification credentials"
                             >
                               <Award className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {/* Assessment Requesting Workflow */}
+                          {requestingCandId === cand.id ? (
+                            <div className="absolute right-0 top-0 bottom-0 bg-slate-900 text-white z-25 flex items-center gap-2 px-3 rounded-lg border border-indigo-500 animate-fade-in shadow-lg" id={`request-inline-panel-${cand.id}`}>
+                              {reqSuccessMsg ? (
+                                <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                                  <Check className="w-4 h-4" />
+                                  <span>{reqSuccessMsg}</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <div className="flex flex-col">
+                                    <span className="text-[8px] uppercase tracking-wider font-semibold text-slate-400">Category</span>
+                                    <select
+                                      value={reqCategory}
+                                      onChange={(e) => setReqCategory(e.target.value)}
+                                      className="bg-slate-800 text-white text-[10px] font-medium border border-slate-700 rounded p-0.5 outline-none focus:border-indigo-500 cursor-pointer"
+                                      id={`req-cat-select-${cand.id}`}
+                                    >
+                                      <option value="Full Stack Development">Full Stack</option>
+                                      <option value="Front-End Development">Front-End</option>
+                                      <option value="Back-End Development">Back-End</option>
+                                      <option value="DevOps & SRE">DevOps & SRE</option>
+                                      <option value="Data Science & AI">Data Science & AI</option>
+                                    </select>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-[8px] uppercase tracking-wider font-semibold text-slate-400">Level</span>
+                                    <select
+                                      value={reqDifficulty}
+                                      onChange={(e) => setReqDifficulty(e.target.value)}
+                                      className="bg-slate-800 text-white text-[10px] font-medium border border-slate-700 rounded p-0.5 outline-none focus:border-indigo-500 cursor-pointer"
+                                      id={`req-diff-select-${cand.id}`}
+                                    >
+                                      <option value="junior">Junior</option>
+                                      <option value="mid">Mid</option>
+                                      <option value="senior">Senior</option>
+                                    </select>
+                                  </div>
+                                  <div className="flex items-center gap-1 mt-3">
+                                    <button
+                                      onClick={() => handleSendAssessmentRequest(cand.id)}
+                                      disabled={reqLoading}
+                                      className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-bold rounded transition cursor-pointer flex items-center gap-1 shadow-xs disabled:opacity-50"
+                                      id={`req-send-btn-${cand.id}`}
+                                    >
+                                      {reqLoading ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
+                                      <span>Send</span>
+                                    </button>
+                                    <button
+                                      onClick={() => setRequestingCandId(null)}
+                                      className="px-1.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-medium rounded transition cursor-pointer border border-slate-700"
+                                      id={`req-cancel-btn-${cand.id}`}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setRequestingCandId(cand.id);
+                                setReqCategory("Full Stack Development");
+                                setReqDifficulty("mid");
+                                setReqSuccessMsg(null);
+                              }}
+                              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-sm"
+                              id={`open-req-btn-${cand.id}`}
+                            >
+                              <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Request</span>
                             </button>
                           )}
                         </div>

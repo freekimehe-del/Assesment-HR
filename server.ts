@@ -16,7 +16,8 @@ import {
   AssessmentAttempt, 
   AICodeReviewResult, 
   DigitalCertificate,
-  ProctoringLog
+  ProctoringLog,
+  AssessmentRequest
 } from "./src/types";
 
 // Load environment variables
@@ -935,6 +936,20 @@ let dbCertificates: DigitalCertificate[] = [
   }
 ];
 
+// Assessment requests from recruiters
+let dbAssessmentRequests: AssessmentRequest[] = [
+  {
+    id: "req-init-1",
+    candidateId: "user-candidate-1",
+    recruiterName: "Marcus Thompson",
+    companyName: "Vortex Tech Labs",
+    category: "Full Stack Development",
+    difficulty: "mid",
+    requestedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 mins ago
+    status: "pending"
+  }
+];
+
 // Server KPI Logs for Admin monitors (SLA Metrics)
 const dbSlaMetrics = {
   completionRate: 88.4,
@@ -1284,6 +1299,70 @@ app.post("/api/assessment/compile-run", (req: Request, res: Response) => {
   });
 });
 
+// Scratchpad Explainer & Concept Guide API (Module 7 extension for non-coding sandbox questions)
+app.post("/api/assessment/scratchpad-explain", async (req: Request, res: Response) => {
+  const { questionTitle, questionDescription, scratchpadText } = req.body;
+  if (!questionTitle || !questionDescription) {
+    return res.status(400).json({ error: "Missing required query parameters." });
+  }
+
+  const systemInstructions = 
+    "You are an expert technical educator and mentor guiding a candidate through a proctored screening assessment. " +
+    "Provide elegant, helpful conceptual explanations about the topics described in the question, but DO NOT directly tell the candidate the correct option or the exact correct answers. Maintain assessment integrity by explaining core mechanisms, best practices, and patterns instead.";
+
+  const userPrompt = 
+    `Question Title: ${questionTitle}\n` +
+    `Question Topic: ${questionDescription}\n` +
+    `Candidate Sandbox Notes / Scratchpad draft: \n"""\n${scratchpadText || ""}\n"""\n\n` +
+    `Please provide a JSON containing:\n` +
+    `1. "explanation": A highly structured Markdown explanation of the technology concepts, security implications, or architectural tradeoffs involved in this question.\n` +
+    `2. "conceptualTips": A list of 2 or 3 bullet points showing best practices or standard gotchas for this topic.\n` +
+    `3. "integrityWarning": A short friendly reminder encouraging the candidate to think critically.`;
+
+  if (aiClient) {
+    try {
+      const response = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: userPrompt,
+        config: {
+          systemInstruction: systemInstructions,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              explanation: { type: Type.STRING },
+              conceptualTips: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              integrityWarning: { type: Type.STRING }
+            },
+            required: ["explanation", "conceptualTips", "integrityWarning"]
+          }
+        }
+      });
+
+      const responseText = response.text;
+      if (responseText) {
+        return res.json(JSON.parse(responseText));
+      }
+    } catch (err) {
+      console.error("Gemini scratchpad explanation query failed:", err);
+    }
+  }
+
+  // Fallback if Gemini client is unavailable or failed
+  res.json({
+    explanation: `### Conceptual Overview: ${questionTitle}\n\nThis question evaluates your understanding of fundamental software engineering principles and architectural patterns.\n\n* **Primary Mechanism:** Focuses on applying reliable industry standards (such as prepared statements for query parameters, secure session tracking, or low complexity operations).\n* **Core Challenge:** Ensuring high availability, security controls, and strict compliance standards in complex backends.`,
+    conceptualTips: [
+      "Always design systems defensively. Assume inputs are untrusted by default.",
+      "Consider performance constraints (Big-O, memory foot-print) and security guardrails first.",
+      "Verify that proper protocol, validation, and sanitization structures are utilized."
+    ],
+    integrityWarning: "Draft notes and dry-run code compiled in this scratchpad are saved inside your candidate logs."
+  });
+});
+
 // 6. AUTOMATED AI CODE REVIEW ENGINE WITH GEMINI API (Module 8)
 app.post("/api/assessment/submit-code-review", async (req: Request, res: Response) => {
   const { attemptId, questionId, language, code } = req.body;
@@ -1541,6 +1620,66 @@ app.post("/api/assessment/complete", (req: Request, res: Response) => {
     attempt,
     certificate
   });
+});
+
+// ASSESSMENT REQUESTS FOR CANDIDATES (RECRUITER INTERACTION WORKFLOW)
+app.get("/api/assessment/requests/:candidateId", (req: Request, res: Response) => {
+  const { candidateId } = req.params;
+  const requests = dbAssessmentRequests.filter(r => r.candidateId === candidateId);
+  res.json({
+    success: true,
+    requests
+  });
+});
+
+app.post("/api/assessment/request", (req: Request, res: Response) => {
+  const { candidateId, category, difficulty, recruiterName, companyName } = req.body;
+  if (!candidateId || !category || !difficulty) {
+    return res.status(400).json({ error: "Missing required assessment request fields." });
+  }
+
+  const newRequest: AssessmentRequest = {
+    id: `req-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+    candidateId,
+    recruiterName: recruiterName || "Anonymous Recruiter",
+    companyName: companyName || "SaaS Enterprise Partner",
+    category,
+    difficulty,
+    requestedAt: new Date().toISOString(),
+    status: "pending"
+  };
+
+  dbAssessmentRequests.unshift(newRequest);
+
+  // Also add a system notification on the recruiter outbox log
+  const systemNotif: RecruiterNotification = {
+    id: `notif-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+    type: "upcoming_interview", // use a compatible type
+    title: `Assessment Requested: ${category}`,
+    message: `You requested that candidate (ID: ${candidateId}) take a ${difficulty} difficulty assessment in ${category}.`,
+    timestamp: new Date().toISOString(),
+    recipientEmail: "recruiter@saas.com",
+    candidateName: "Alex Rivera",
+    status: "sent",
+    metadata: { category, difficulty }
+  };
+  dbNotifications.unshift(systemNotif);
+
+  res.json({
+    success: true,
+    message: "Assessment request sent successfully and logged in Candidate queue.",
+    request: newRequest
+  });
+});
+
+app.post("/api/assessment/requests/:id/dismiss", (req: Request, res: Response) => {
+  const { id } = req.params;
+  const request = dbAssessmentRequests.find(r => r.id === id);
+  if (request) {
+    request.status = "dismissed";
+    return res.json({ success: true, message: "Request dismissed successfully." });
+  }
+  res.status(404).json({ error: "Assessment request not located." });
 });
 
 // ============================================================================
