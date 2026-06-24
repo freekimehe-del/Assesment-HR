@@ -325,7 +325,7 @@ export default function GlobalLeaderboard({ user, onLaunchAssessment }: GlobalLe
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-50/70 text-slate-450 border-b border-slate-200 font-mono text-[9px] uppercase tracking-wider">
+              <tr className="bg-slate-50/70 text-slate-500 border-b border-slate-200 font-mono text-[9px] uppercase tracking-wider">
                 <th className="py-2.5 px-4 text-center w-14">Rank</th>
                 <th className="py-2.5 px-4">Developer Profile</th>
                 <th className="py-2.5 px-4">Technology Track</th>

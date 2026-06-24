@@ -291,7 +291,7 @@ export default function MockInterviewModal({ attemptId, onClose }: MockInterview
               {/* Progress counter */}
               {!interviewComplete && (
                 <div className="px-4 py-2 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center text-[10px]" id="interview-progress-bar">
-                  <span className="font-bold uppercase tracking-wider text-slate-450">Session Progress</span>
+                  <span className="font-bold uppercase tracking-wider text-slate-500">Session Progress</span>
                   <span className="font-semibold text-indigo-700 bg-indigo-50 border border-indigo-150 px-2 py-0.5 rounded-md font-mono">
                     Question {getQuestionTurnCount()} of 3
                   </span>

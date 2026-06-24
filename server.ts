@@ -1139,7 +1139,7 @@ app.delete("/api/admin/questions/:id", (req: Request, res: Response) => {
 
 // 4. RANDOMIZED ASSESSMENT GENERATOR (Module 5)
 app.post("/api/assessment/generate", (req: Request, res: Response) => {
-  const { candidateId, category, difficulty } = req.body;
+  const { candidateId, category, difficulty, isPractice } = req.body;
   if (!candidateId || !category || !difficulty) {
     return res.status(400).json({ error: "Required parameters (candidateId, category, difficulty) are missing." });
   }
@@ -1190,7 +1190,8 @@ app.post("/api/assessment/generate", (req: Request, res: Response) => {
     timeSpentSeconds: 0,
     timeSpentPerQuestion: {},
     proctoringLogs: [],
-    integrityScore: 100
+    integrityScore: 100,
+    isPractice: !!isPractice
   };
 
   dbAttempts.push(newAttempt);
@@ -1481,9 +1482,9 @@ app.post("/api/assessment/complete", (req: Request, res: Response) => {
   attempt.endTime = new Date().toISOString();
   attempt.status = "completed";
 
-  // Create Digital Certificate if score >= 70% (Proficient or above)
+  // Create Digital Certificate if score >= 70% (Proficient or above) and NOT a practice session
   let certificate: DigitalCertificate | null = null;
-  if (attempt.overallCandidateScore >= 70) {
+  if (!attempt.isPractice && attempt.overallCandidateScore >= 70) {
     const certId = `cert-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substr(2, 2)}`;
     const hash = Math.random().toString(16).substr(2, 16);
     
@@ -1514,8 +1515,8 @@ app.post("/api/assessment/complete", (req: Request, res: Response) => {
     }
   }
 
-  // Trigger automated email alert if enabled in settings
-  if (emailAlertSettings.completionAlerts) {
+  // Trigger automated email alert if enabled in settings and NOT a practice session
+  if (!attempt.isPractice && emailAlertSettings.completionAlerts) {
     const emailNotif: RecruiterNotification = {
       id: `notif-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
       type: "assessment_completion",
@@ -2403,6 +2404,165 @@ app.get("/api/assessment/leaderboard", (req: Request, res: Response) => {
       totalCompetitors: rankedEntries.length
     },
     distribution: ranges
+  });
+});
+
+// ==========================================
+// AI CAREER SUMMARY AND ADVICE API
+// ==========================================
+app.get("/api/assessment/ai-career-summary", async (req: Request, res: Response) => {
+  const { candidateId } = req.query;
+  const candidate = dbUsers.find(u => u.id === candidateId);
+  if (!candidate) {
+    return res.status(404).json({ error: "Candidate not found" });
+  }
+
+  // Find the latest completed assessment attempt
+  const completedAttempts = dbAttempts.filter(a => a.candidateId === candidateId && a.status === "completed");
+  
+  // Sort by end time / start time descending to get the latest
+  completedAttempts.sort((a, b) => new Date(b.endTime || b.startTime).getTime() - new Date(a.endTime || a.startTime).getTime());
+  const latestAttempt = completedAttempts[0];
+
+  let score = 0;
+  let category = "Software Engineering";
+  let codingScore = 0;
+  let mcqScore = 0;
+  let systemReview = "";
+  let weakPoints: string[] = [];
+  let recommendations: string[] = [];
+
+  if (latestAttempt) {
+    score = latestAttempt.overallCandidateScore || 0;
+    category = latestAttempt.category;
+    codingScore = latestAttempt.codingAssignmentScore || 0;
+    mcqScore = latestAttempt.technicalKnowledgeScore || 0;
+    systemReview = latestAttempt.codeReviewSummary?.readabilityAssessment || "";
+    weakPoints = latestAttempt.codeReviewSummary?.vulnerabilities?.map(v => v.title) || [];
+    recommendations = latestAttempt.codeReviewSummary?.recommendations || [];
+  } else if (candidateId === "user-candidate-1") {
+    // High-fidelity preset for Alex Rivera's initial dashboard state
+    score = 85;
+    category = "React & Frontend";
+    codingScore = 90;
+    mcqScore = 80;
+    systemReview = "Clean declarative style. Efficient component partitioning and proper dependency arrays observed.";
+    weakPoints = ["Redis Cache Stampede Under Thundering Herd Load", "Array Bound Limits Validation Checks"];
+    recommendations = ["Optimize memoization targets to prevent micro re-renders", "Deploy Redis lock mechanisms to handle distributed race states"];
+  }
+
+  const prompt = `You are a Senior Technical Coach and Career Advisor at a premium tech recruitment platform.
+Provide an encouraging, direct, and actionable coaching feedback summary based on the developer's latest assessment score.
+
+Developer Profile:
+Name: ${candidate.fullName}
+Role Track: ${category}
+Experience level: ${candidate.experienceLevel || "Mid-level"}
+Latest Score: ${score}% (MCQ/Knowledge: ${mcqScore}%, Practical Coding: ${codingScore}%)
+Observed Code Quality: ${systemReview || "Solid modular patterns."}
+Identified Weak Spots: ${weakPoints.length > 0 ? weakPoints.join(", ") : "None specified"}
+Existing Recommendations: ${recommendations.length > 0 ? recommendations.join(", ") : "None specified"}
+
+Please return a JSON object with the following structure:
+{
+  "coachingHeadline": "A brief, highly encouraging, professional one-sentence career headline for their profile.",
+  "strategicAdvice": "A 2-3 sentence strategic advice paragraph targeting their specific technical level and category.",
+  "actionSteps": [
+    "Step 1: Concrete learning task or exercise (e.g., refactoring standard algorithms, reading specific guidelines).",
+    "Step 2: Concrete development practice.",
+    "Step 3: Advanced architectural topic to study."
+  ],
+  "estimatedTimeMinutes": "Estimated study time required to close the gaps, e.g. '120 mins / week'"
+}
+
+Rules:
+1. Speak in a supportive, premium, objective tone. Do not use generic praise; keep it highly specific.
+2. Tailor your recommendations to the track: ${category}.
+3. Ensure the JSON is completely valid and parsed correctly without code blocks or markdown wrappers.`;
+
+  if (aiClient) {
+    try {
+      const response = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          systemInstruction: "You are a professional Senior Tech Career Coach offering structured feedback.",
+        }
+      });
+
+      const responseText = response.text?.trim() || "";
+      const result = JSON.parse(responseText);
+      return res.json({
+        success: true,
+        hasScore: score > 0 || latestAttempt !== undefined || candidateId === "user-candidate-1",
+        score,
+        category,
+        coachingHeadline: result.coachingHeadline,
+        strategicAdvice: result.strategicAdvice,
+        actionSteps: result.actionSteps,
+        estimatedTimeMinutes: result.estimatedTimeMinutes || "150 mins / week"
+      });
+    } catch (err) {
+      console.error("Gemini career coaching summary failed, using fallback:", err);
+    }
+  }
+
+  // Fallback advice if Gemini is unavailable
+  let coachingHeadline = "";
+  let strategicAdvice = "";
+  let actionSteps: string[] = [];
+  let estimatedTimeMinutes = "120 mins / week";
+
+  if (score === 0 && !latestAttempt && candidateId !== "user-candidate-1") {
+    coachingHeadline = "Ready to Benchmark Your Engineering Talents!";
+    strategicAdvice = "You haven't completed a screening assessment yet. Launching your first assessment helps map your current algorithmic agility and systems awareness, which unlocks tailored learning pathways.";
+    actionSteps = [
+      "Launch a competency assessment matching your target stack.",
+      "Complete the MCQ section within the active time allocation.",
+      "Run unit test assertions in the sandbox IDE before submission."
+    ];
+    estimatedTimeMinutes = "45 mins";
+  } else {
+    if (score >= 85) {
+      coachingHeadline = "Distinguished Technical Leadership Potential";
+      strategicAdvice = `Outstanding performance on the ${category} track. You demonstrate advanced algorithmic structural choices and highly readable code patterns. Focus on mastering distributed resilience and peak caching systems.`;
+      actionSteps = [
+        "Incorporate strict defensive error boundaries and check array boundary constraints under extreme load.",
+        "Implement mutual exclusion locks (e.g. Redlock) in distributed storage setups to prevent cache stampedes.",
+        "Practice optimizing time-space complexities for real-time high-throughput streaming."
+      ];
+      estimatedTimeMinutes = "180 mins / week";
+    } else if (score >= 70) {
+      coachingHeadline = "Highly Proficient Core Technical Fundamentals";
+      strategicAdvice = `Solid showing in your ${category} evaluation. Your core syntax and logic flows are very clean. To transition to a senior level, focus on performance profiling and addressing minor web security boundaries.`;
+      actionSteps = [
+        "Explore Redis memory eviction strategies and handle peak database loads cleanly.",
+        "Refactor nesting loops by utilizing Map lookups or cached lookahead arrays.",
+        "Audit frontend modules against the OWASP Top 10 guidelines."
+      ];
+      estimatedTimeMinutes = "150 mins / week";
+    } else {
+      coachingHeadline = "Strengthening Foundational Systems Agility";
+      strategicAdvice = `You possess good basic coding structure. Focus on building more comfortable coding speed under timed pressure, implementing linear runtime lookups, and checking boundary edge cases.`;
+      actionSteps = [
+        "Study Big-O notation complexity and refactor exponential O(N²) algorithms to O(N).",
+        "Perform dry runs of complex array-slicing logic on a whiteboard before coding.",
+        "Familiarize yourself with automated test boundaries and handling null pointer exceptions."
+      ];
+      estimatedTimeMinutes = "200 mins / week";
+    }
+  }
+
+  res.json({
+    success: true,
+    hasScore: score > 0 || latestAttempt !== undefined || candidateId === "user-candidate-1",
+    score,
+    category,
+    coachingHeadline,
+    strategicAdvice,
+    actionSteps,
+    estimatedTimeMinutes
   });
 });
 

@@ -104,6 +104,7 @@ export interface AssessmentAttempt {
   endTime?: string;
   timeSpentSeconds: number;
   status: "initiated" | "ongoing" | "submitted" | "completed";
+  isPractice?: boolean;
   
   // Assessment Delivery Set
   questions: Question[];

@@ -716,7 +716,7 @@ export default function LandingHero(props: LandingHeroProps) {
                       transition={{ duration: 0.2 }}
                       className="space-y-3"
                     >
-                      <p className="text-slate-450 text-xs leading-relaxed max-w-xl">
+                      <p className="text-slate-300 text-xs leading-relaxed max-w-xl">
                         Isolated sandboxed containers execute candidates' submissions instantly using our secure server-side compiler. Integrated testing supports detailed validation suites across multiple complex engineering technologies.
                       </p>
                       
@@ -741,7 +741,7 @@ export default function LandingHero(props: LandingHeroProps) {
                       transition={{ duration: 0.2 }}
                       className="space-y-3"
                     >
-                      <p className="text-slate-450 text-xs leading-relaxed max-w-xl">
+                      <p className="text-slate-300 text-xs leading-relaxed max-w-xl">
                         Continuous webcam monitoring evaluates facial positioning, blink counters, gaze displacement, and second-person identification alerts to safeguard recruitment workflows.
                       </p>
 
@@ -776,7 +776,7 @@ export default function LandingHero(props: LandingHeroProps) {
                       transition={{ duration: 0.2 }}
                       className="space-y-3"
                     >
-                      <p className="text-slate-450 text-xs leading-relaxed max-w-xl">
+                      <p className="text-slate-300 text-xs leading-relaxed max-w-xl">
                         On challenge submission, generating cryptographically signed validity registry items guarantees security against candidate record tampering. Shareable with recruiters immediately.
                       </p>
 
@@ -809,7 +809,7 @@ export default function LandingHero(props: LandingHeroProps) {
                   <ShieldCheck className="w-5.5 h-5.5" />
                 </div>
                 <h4 className="text-white font-display font-extrabold text-sm uppercase tracking-wide">Enterprise Compliance</h4>
-                <p className="text-slate-450 text-xs leading-relaxed">
+                <p className="text-slate-300 text-xs leading-relaxed">
                   Engineered with SOC2 Type II controls, continuous SPF/DKIM verification, and automated proctor tracking compliance rules.
                 </p>
               </div>

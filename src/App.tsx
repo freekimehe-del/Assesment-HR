@@ -53,7 +53,7 @@ export default function App() {
     }
   };
 
-  const handleLaunchAssessment = async (category: Question["category"], difficulty: Question["difficulty"]) => {
+  const handleLaunchAssessment = async (category: Question["category"], difficulty: Question["difficulty"], isPractice?: boolean) => {
     if (!user) return;
     
     try {
@@ -63,7 +63,8 @@ export default function App() {
         body: JSON.stringify({
           candidateId: user.id,
           category,
-          difficulty
+          difficulty,
+          isPractice: !!isPractice
         })
       });
       const data = await res.json();

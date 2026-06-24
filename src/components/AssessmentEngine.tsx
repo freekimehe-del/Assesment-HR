@@ -482,6 +482,18 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col relative overflow-hidden" id="assessment-workspace-root">
       
+      {attempt.isPractice && (
+        <div className="bg-amber-50 border-b border-amber-250 text-amber-900 px-6 py-2 text-xs flex justify-between items-center z-20 font-sans font-medium" id="practice-session-banner">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            <span><strong>Practice Session Mode:</strong> Simulating real-world assessment pressure using non-certified test samples.</span>
+          </div>
+          <span className="text-[10px] bg-amber-100/70 text-amber-800 border border-amber-300 px-2.5 py-0.5 rounded font-bold uppercase font-mono tracking-wider">
+            Non-Certified Sample
+          </span>
+        </div>
+      )}
+
       {/* Top Screening Workspace Header */}
       <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap justify-between items-center relative z-20" id="assessment-header">
         <div className="flex items-center gap-2.5">
@@ -489,7 +501,14 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
             <Code className="w-4.5 h-4.5" />
           </div>
           <div>
-            <span className="font-bold text-sm text-slate-900 block leading-tight">{attempt.category} Screening</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-sm text-slate-900 block leading-tight">{attempt.category} Screening</span>
+              {attempt.isPractice && (
+                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-bold rounded uppercase font-mono border border-amber-250">
+                  Practice
+                </span>
+              )}
+            </div>
             <span className="text-[10px] text-indigo-600 font-semibold uppercase tracking-wider">Isolated Proctor Environment</span>
           </div>
         </div>
@@ -572,7 +591,7 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                 <Clock className="w-4 h-4 text-indigo-600 animate-pulse" />
                 <span>Pace & Progress Monitor</span>
               </span>
-              <span className="text-slate-550 font-mono text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold">
+              <span className="font-mono text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold">
                 {completionPercent}% Questions Done
               </span>
             </div>
@@ -814,7 +833,7 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
 
               {/* Compilation Test Cases details */}
               <div className="bg-white border-t border-slate-200 p-3.5" id="test-results-strip">
-                <h5 className="text-[10px] font-bold text-slate-450 mb-1.5 font-sans tracking-wide uppercase">Test verification cases:</h5>
+                <h5 className="text-[10px] font-bold text-slate-500 mb-1.5 font-sans tracking-wide uppercase">Test verification cases:</h5>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5" id="tests-panels">
                   {(activeQuestion.testCases || []).map((tc, index) => {
                     const matchResult = testResults[index];
@@ -832,8 +851,8 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                             <span className="text-slate-400 font-mono">PENDING</span>
                           )}
                         </div>
-                        <div className="font-mono text-slate-450 truncate">In: {tc.input}</div>
-                        <div className="font-mono text-slate-450 truncate">Exp: {tc.expectedOutput}</div>
+                        <div className="font-mono text-slate-500 truncate">In: {tc.input}</div>
+                        <div className="font-mono text-slate-500 truncate">Exp: {tc.expectedOutput}</div>
                       </div>
                     );
                   })}
@@ -855,7 +874,7 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
             <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-white" id="non-coding-preview">
               <HelpCircle className="w-10 h-10 text-slate-300 mb-2" />
               <h3 className="font-bold text-xs text-slate-700">Workspace Sandbox is locked for non-coding queries.</h3>
-              <p className="text-[11px] text-slate-450 max-w-xs leading-relaxed mt-1">
+              <p className="text-[11px] text-slate-500 max-w-xs leading-relaxed mt-1">
                 Complete the MCQ choices, Multi-select criteria or Fill-in blanks inside the left panel. Choose 'Next Item' to advance.
               </p>
             </div>
@@ -888,7 +907,7 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                 <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
                 <div>
                   <h4 className="font-bold text-slate-800">Executing Gemini static analysis...</h4>
-                  <p className="text-slate-450 text-[11px] mt-1">Reviewing formatting standards, complexity analysis, and security rules.</p>
+                  <p className="text-slate-500 text-[11px] mt-1">Reviewing formatting standards, complexity analysis, and security rules.</p>
                 </div>
               </div>
             ) : aiReviewResult ? (
@@ -896,15 +915,15 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                 {/* Score meters grid */}
                 <div className="grid grid-cols-2 gap-2.5" id="scores-meters">
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-0.5 shadow-3xs">
-                    <span className="text-slate-450 text-[9px] uppercase font-bold tracking-wider block">Quality Index</span>
+                    <span className="text-slate-500 text-[9px] uppercase font-bold tracking-wider block">Quality Index</span>
                     <span className="text-base font-mono font-bold text-indigo-700">{aiReviewResult.codeQualityScore}/100</span>
                   </div>
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-0.5 shadow-3xs">
-                    <span className="text-slate-450 text-[9px] uppercase font-bold tracking-wider block">Security Index</span>
+                    <span className="text-slate-500 text-[9px] uppercase font-bold tracking-wider block">Security Index</span>
                     <span className="text-base font-mono font-bold text-indigo-700">{aiReviewResult.securityScore}/100</span>
                   </div>
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-0.5 shadow-3xs">
-                    <span className="text-slate-450 text-[9px] uppercase font-bold tracking-wider block">Maintainability</span>
+                    <span className="text-slate-500 text-[9px] uppercase font-bold tracking-wider block">Maintainability</span>
                     <span className="text-base font-mono font-bold text-indigo-700">{aiReviewResult.maintainabilityScore}/100</span>
                   </div>
                   <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-0.5 shadow-2xs">

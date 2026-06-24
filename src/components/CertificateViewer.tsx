@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { DigitalCertificate } from "../types";
+import { DigitalCertificate, UserRole } from "../types";
 import { 
   Award, 
   CheckCircle, 
@@ -16,8 +16,10 @@ import {
   Hash, 
   ArrowLeft,
   X,
-  Info
+  Info,
+  Sparkles
 } from "lucide-react";
+import AIBadgeConsole, { AIBadgeSVG, BadgeTheme } from "./AIBadgeGenerator";
 
 interface CertificateViewerProps {
   certificateId?: string;
@@ -100,9 +102,25 @@ export default function CertificateViewer(props: CertificateViewerProps) {
 
               <div className="space-y-5 relative z-10">
                 <div className="flex justify-center mb-1">
-                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400">
-                    <Award className="w-10 h-10" />
-                  </div>
+                  {(() => {
+                    let automatedTheme: BadgeTheme = "emerald";
+                    if (cert.score >= 90) automatedTheme = "gold";
+                    else if (cert.score >= 80) automatedTheme = "amethyst";
+                    else if (cert.score >= 70) automatedTheme = "emerald";
+                    return (
+                      <div className="relative group transition transform hover:scale-105 duration-300">
+                        <AIBadgeSVG 
+                          technologyArea={cert.technologyArea} 
+                          score={cert.score} 
+                          candidateName={cert.candidateName} 
+                          verificationHash={cert.verificationHash} 
+                          themeStyle={automatedTheme}
+                          size={110}
+                          id={`cert-view-badge-${cert.id}`}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-1">
@@ -162,7 +180,7 @@ export default function CertificateViewer(props: CertificateViewerProps) {
             <div className="w-full max-w-xl bg-slate-50 border border-slate-200 rounded-xl p-10 text-center text-slate-500 font-sans space-y-2">
               <Award className="w-10 h-10 text-slate-300 mx-auto" />
               <p className="text-xs font-bold text-slate-700">No active certificate has been parsed.</p>
-              <p className="text-[11px] text-slate-450 leading-relaxed max-w-sm mx-auto">
+              <p className="text-[11px] text-slate-500 leading-relaxed max-w-sm mx-auto">
                 Use the verification form on the right to load and authenticate credentials from the SaaS cloud registry ledger.
               </p>
             </div>
@@ -176,14 +194,14 @@ export default function CertificateViewer(props: CertificateViewerProps) {
               <ShieldCheck className="w-4 h-4 text-indigo-600" />
               <span>SaaS Registry Search</span>
             </h3>
-            <p className="text-slate-450 text-[11px] mt-1 leading-relaxed">
+            <p className="text-slate-500 text-[11px] mt-1 leading-relaxed">
               Verify resource authenticity directly. Copy-paste the certificate hash or ID to check real-time database registries.
             </p>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1">Verification Hash / ID</label>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Verification Hash / ID</label>
               <div className="flex bg-slate-50 border border-slate-200 rounded-lg p-1">
                 <input
                   type="text"
@@ -234,6 +252,25 @@ export default function CertificateViewer(props: CertificateViewerProps) {
                     <span className="font-mono text-[10px] text-slate-700 font-semibold">{verifiedData.timestamp.split("T")[0]}</span>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* AI Customizer Block */}
+            {cert && (
+              <div className="pt-4 border-t border-slate-100" id="cert-badge-generator-container">
+                <AIBadgeConsole 
+                  user={{ 
+                    fullName: cert.candidateName, 
+                    id: cert.candidateId, 
+                    email: "", 
+                    role: UserRole.CANDIDATE, 
+                    mfaEnabled: false,
+                    subscriptionPlan: "basic",
+                    subscriptionActive: false,
+                    dailySearchQuotaUsed: 0
+                  }} 
+                  certificate={cert} 
+                />
               </div>
             )}
           </div>

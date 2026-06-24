@@ -402,7 +402,7 @@ export default function AdminDashboard(props: AdminDashboardProps) {
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <div>
-                          <label className="block text-[10px] text-slate-450 font-mono font-semibold mb-0.5">JS Starter Code</label>
+                          <label className="block text-[10px] text-slate-500 font-mono font-semibold mb-0.5">JS Starter Code</label>
                           <textarea
                             placeholder="function solution() {\n  return null;\n}"
                             value={starterCodeJs}
@@ -412,7 +412,7 @@ export default function AdminDashboard(props: AdminDashboardProps) {
                           ></textarea>
                         </div>
                         <div>
-                          <label className="block text-[10px] text-slate-450 font-mono font-semibold mb-0.5">Python Starter Code</label>
+                          <label className="block text-[10px] text-slate-500 font-mono font-semibold mb-0.5">Python Starter Code</label>
                           <textarea
                             placeholder="def solution():\n    return None"
                             value={starterCodePy}
@@ -527,7 +527,7 @@ export default function AdminDashboard(props: AdminDashboardProps) {
                         <tr key={q.id} className="hover:bg-slate-50 transition-colors">
                           <td className="py-2.5 px-3.5">
                             <span className="font-bold text-slate-900 block leading-snug">{q.category}</span>
-                            <span className="text-[9px] text-slate-450 font-mono font-medium">{q.technologyStack.join(", ") || "Generic"}</span>
+                            <span className="text-[9px] text-slate-500 font-mono font-medium">{q.technologyStack.join(", ") || "Generic"}</span>
                           </td>
                           <td className="py-2.5 px-3.5 text-slate-700 max-w-xs truncate">{q.title}</td>
                           <td className="py-2.5 px-3.5 capitalize font-mono text-indigo-600 font-bold">{q.difficulty}</td>

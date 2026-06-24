@@ -36,17 +36,21 @@ import {
 import StrengthsWeaknessesModal from "./StrengthsWeaknessesModal";
 import MockInterviewModal from "./MockInterviewModal";
 import GlobalLeaderboard from "./GlobalLeaderboard";
+import AISummaryCard from "./AISummaryCard";
+import AIBadgeConsole, { AIBadgeSVG } from "./AIBadgeGenerator";
 
 interface CandidateDashboardProps {
   user: UserProfile;
   onLogout: () => void;
-  onLaunchAssessment: (category: Question["category"], difficulty: Question["difficulty"]) => void;
+  onLaunchAssessment: (category: Question["category"], difficulty: Question["difficulty"], isPractice?: boolean) => void;
   onViewCertificate: (certId: string) => void;
   onUpdateUser: (updatedUser: UserProfile) => void;
 }
 
 export default function CandidateDashboard(props: CandidateDashboardProps) {
   const [activeTab, setActiveTab] = useState<"profile" | "history" | "launch" | "gdpr" | "leaderboard">("profile");
+  const [isPracticeMode, setIsPracticeMode] = useState(false);
+  const [badgeTheme, setBadgeTheme] = useState<"cyberpunk" | "obsidian" | "emerald" | "amethyst" | "gold">("cyberpunk");
   const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
   const [certs, setCerts] = useState<DigitalCertificate[]>([]);
   const [loading, setLoading] = useState(false);
@@ -317,8 +321,13 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
           
           {/* PROFILE TAB */}
           {activeTab === "profile" && (
-            <form onSubmit={handleProfileSave} className="space-y-4" id="profile-tab-form">
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="profile-basic-card">
+            <div className="space-y-4" id="profile-tab-wrapper">
+              <AISummaryCard 
+                user={props.user} 
+                onNavigate={(tabId) => setActiveTab(tabId as any)} 
+              />
+              <form onSubmit={handleProfileSave} className="space-y-4" id="profile-tab-form">
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="profile-basic-card">
                 <div className="border-b border-slate-150 pb-3 mb-4">
                   <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                     <User className="text-indigo-600 w-4.5 h-4.5" />
@@ -485,7 +494,7 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                       <p className="text-[11px] text-slate-600 mt-1.5 leading-relaxed">{item.description}</p>
                     </div>
                   ))}
-                  {employmentHistory.length === 0 && <div className="text-slate-450 text-xs font-mono">No historical work recorded. Write below.</div>}
+                  {employmentHistory.length === 0 && <div className="text-slate-500 text-xs font-mono">No historical work recorded. Write below.</div>}
                 </div>
 
                 {/* Sub-form */}
@@ -565,7 +574,8 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                   </span>
                 )}
               </div>
-            </form>
+              </form>
+            </div>
           )}
 
           {/* LAUNCH ASSESSMENT TAB */}
@@ -589,6 +599,72 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* Practice Session Simulation Toggle Console */}
+              <div 
+                className={`border rounded-xl p-4.5 shadow-2xs transition-all duration-300 ${
+                  isPracticeMode 
+                    ? "bg-amber-50/50 border-amber-300 shadow-xs" 
+                    : "bg-white border-slate-200"
+                }`}
+                id="practice-session-toggle-card"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${isPracticeMode ? "bg-amber-500 animate-pulse" : "bg-slate-300"}`}></span>
+                      <h3 className="text-xs font-bold text-slate-900 flex items-center gap-1.5 font-sans">
+                        <span>Practice Session Mode</span>
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-black font-mono uppercase ${isPracticeMode ? "bg-amber-100 text-amber-850 border border-amber-250 animate-bounce" : "bg-slate-100 text-slate-500"}`}>
+                          {isPracticeMode ? "SIMULATION ACTIVE" : "DISABLED"}
+                        </span>
+                      </h3>
+                    </div>
+                    <p className="text-slate-500 text-[11px] leading-relaxed max-w-xl">
+                      Enable a sandbox environment with countdown timer pressure for coding challenges. Practice with non-certified test samples risk-free without affecting your certified index scores or recruiter visibility.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsPracticeMode(!isPracticeMode)}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        isPracticeMode ? "bg-amber-600" : "bg-slate-200"
+                      }`}
+                      id="practice-mode-switch"
+                      role="switch"
+                      aria-checked={isPracticeMode}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          isPracticeMode ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {isPracticeMode && (
+                  <div className="mt-3.5 pt-3.5 border-t border-amber-200/50 grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-[11px] text-amber-900 animate-fade-in" id="practice-sim-details">
+                    <div className="flex gap-2 items-start">
+                      <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold">Simulated Countdown Pressure</strong>
+                        <p className="text-slate-600 text-[10px] mt-0.5 leading-snug">Strict question-by-question and overall time limits are enforced to build comfortable speed.</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="font-bold">Zero Risk Sandbox</strong>
+                        <p className="text-slate-600 text-[10px] mt-0.5 leading-snug">Ideal for training or experimenting with code layout, async loops, or state memory rules.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Categories Grid */}
@@ -637,15 +713,19 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                     </div>
 
                     <div className="mt-4 pt-3.5 border-t border-slate-150 flex items-center justify-between">
-                      <div className="text-[11px] text-slate-450 font-mono">
+                      <div className="text-[11px] text-slate-500 font-mono">
                         Level: <span className="text-indigo-600 capitalize font-bold">{props.user.experienceLevel || "mid"}</span>
                       </div>
                       <button
-                        onClick={() => props.onLaunchAssessment(domain.name as any, props.user.experienceLevel || "mid")}
-                        className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-xs"
+                        onClick={() => props.onLaunchAssessment(domain.name as any, props.user.experienceLevel || "mid", isPracticeMode)}
+                        className={`px-3.5 py-1.5 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1 shadow-xs ${
+                          isPracticeMode 
+                            ? "bg-amber-600 hover:bg-amber-700" 
+                            : "bg-indigo-600 hover:bg-indigo-700"
+                        }`}
                         id={`launch-btn-${domain.name.replace(/\s+/g, "-")}`}
                       >
-                        <span>Take Assessment</span>
+                        <span>{isPracticeMode ? "Practice Challenge" : "Take Assessment"}</span>
                         <Zap className="w-3 h-3 fill-current" />
                       </button>
                     </div>
@@ -672,16 +752,37 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4" id="certs-list-container">
                   {certs.map((cert) => (
-                    <div key={cert.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between relative overflow-hidden shadow-2xs" id={`cert-item-${cert.id}`}>
-                      <div className="space-y-1 relative z-10">
-                        <span className="text-[9px] bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold px-1.5 py-0.5 rounded font-mono uppercase">
-                          Score: {cert.score}%
-                        </span>
-                        <h4 className="font-bold text-xs text-slate-900 mt-1">{cert.technologyArea}</h4>
-                        <p className="text-[10px] text-slate-500 font-mono">Issued: {cert.assessmentDate} • Hash: {cert.verificationHash.substr(0, 8)}</p>
+                    <div key={cert.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-4 relative overflow-hidden shadow-2xs" id={`cert-item-${cert.id}`}>
+                      <div className="flex items-center gap-3.5 relative z-10 min-w-0 flex-grow">
+                        {/* Mini automated dynamic SVG Badge */}
+                        <div className="shrink-0 flex items-center justify-center p-1 bg-white border border-slate-150 rounded-xl shadow-3xs">
+                          {(() => {
+                            let miniThemeStyle: "emerald" | "gold" | "amethyst" = "emerald";
+                            if (cert.score >= 90) miniThemeStyle = "gold";
+                            else if (cert.score >= 80) miniThemeStyle = "amethyst";
+                            return (
+                              <AIBadgeSVG 
+                                technologyArea={cert.technologyArea} 
+                                score={cert.score} 
+                                candidateName={props.user.fullName} 
+                                verificationHash={cert.verificationHash} 
+                                themeStyle={miniThemeStyle} 
+                                size={52}
+                                id={`mini-badge-${cert.id}`}
+                              />
+                            );
+                          })()}
+                        </div>
+                        <div className="space-y-0.5 min-w-0 flex-grow">
+                          <span className="text-[9px] bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold px-1.5 py-0.5 rounded font-mono uppercase">
+                            Score: {cert.score}%
+                          </span>
+                          <h4 className="font-bold text-xs text-slate-900 mt-1 truncate">{cert.technologyArea}</h4>
+                          <p className="text-[10px] text-slate-500 font-mono truncate">Issued: {cert.assessmentDate} • Hash: {cert.verificationHash.substr(0, 8)}</p>
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-2 relative z-10">
+                      <div className="flex items-center gap-2 relative z-10 shrink-0">
                         <button
                           onClick={() => {
                             setSelectedCertId(cert.id);
@@ -957,27 +1058,36 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                                 @{props.user.fullName ? props.user.fullName.replace(/\s+/g, "").toLowerCase() : "user"} • Just now
                               </span>
                             </div>
-                          </div>
-
-                          {/* Post snippet preview excerpt */}
+                                {/* Post snippet preview excerpt */}
                           <p className="text-[11px] text-slate-800 leading-relaxed mb-3 line-clamp-3 select-none whitespace-pre-line">
                             {generateShareContent().split("\n\n")[0]}
                           </p>
 
                           {/* Premium Holographic/Glowing Digital Badge Mockup */}
-                          <div className="w-full bg-slate-950 rounded-xl overflow-hidden relative border border-slate-800 p-4 flex flex-col justify-between h-44 text-white shadow-md" id="share-hologram-badge">
+                          <div className="w-full bg-slate-950 rounded-xl overflow-hidden relative border border-slate-800 p-3.5 flex items-center gap-4 h-44 text-white shadow-md" id="share-hologram-badge">
                             
                             {/* Decorative background gradients */}
                             <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(99,102,241,0.2)_0%,rgba(16,185,129,0.03)_60%,transparent_100%)] pointer-events-none"></div>
                             <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/[0.04] rounded-full blur-2xl"></div>
-                            <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:1rem_1rem]"></div>
+                            <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.015)_1px,transparent_1px)] bg-[size:1rem_1rem]"></div>
 
-                            {/* Badge Header Info */}
-                            <div className="flex justify-between items-start relative z-10">
-                              <div className="flex items-center gap-1.5">
-                                <div className="p-1 bg-indigo-600/20 border border-indigo-500/20 rounded-md text-indigo-400">
-                                  <Award className="w-3.5 h-3.5" />
-                                </div>
+                            {/* Left Side: Live rendering SVG Badge! */}
+                            <div className="relative z-10 shrink-0">
+                              <AIBadgeSVG 
+                                technologyArea={selectedCert.technologyArea} 
+                                score={selectedCert.score} 
+                                candidateName={props.user.fullName} 
+                                verificationHash={selectedCert.verificationHash} 
+                                themeStyle={badgeTheme}
+                                size={120}
+                                id={`social-preview-badge-${selectedCert.id}`}
+                              />
+                            </div>
+
+                            {/* Right Side: High-Tech Metadata Grid */}
+                            <div className="flex-grow flex flex-col justify-between h-full relative z-10 min-w-0">
+                              {/* Badge Header Info */}
+                              <div className="flex justify-between items-start">
                                 <div>
                                   <span className="text-[8px] font-mono tracking-widest text-indigo-400 uppercase font-bold block leading-none">
                                     TechScreen Certified
@@ -986,38 +1096,37 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                                     PUBLIC TRUST REGISTRY
                                   </span>
                                 </div>
+                                <div className="text-[9px] font-mono bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                                  {selectedCert.score}%
+                                </div>
                               </div>
-                              
-                              <div className="text-[9px] font-mono bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-                                {selectedCert.score}%
+
+                              {/* Tech Area Display */}
+                              <div className="space-y-0.5">
+                                <h4 className="text-xs sm:text-sm font-extrabold tracking-tight text-white font-sans truncate">
+                                  {selectedCert.technologyArea}
+                                </h4>
+                                <p className="text-[8px] text-slate-400 font-mono truncate uppercase">
+                                  VERIFIED PROFESSIONAL COMPETENT
+                                </p>
+                              </div>
+
+                              {/* Metadata stamp footer of hologram */}
+                              <div className="flex justify-between items-end border-t border-slate-900 pt-1.5">
+                                <div className="min-w-0">
+                                  <span className="text-[7px] text-slate-500 block leading-none font-mono">CANDIDATE:</span>
+                                  <span className="text-[9px] font-bold text-slate-300 font-sans block truncate max-w-[120px]">{props.user.fullName}</span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className="text-[7px] text-slate-500 block leading-none font-mono">VERIFICATION:</span>
+                                  <span className="text-[8px] font-mono font-bold text-slate-400 block tracking-wider">
+                                    {selectedCert.verificationHash.substr(0, 10).toUpperCase()}
+                                  </span>
+                                </div>
                               </div>
                             </div>
 
-                            {/* Tech Area Display */}
-                            <div className="space-y-0.5 my-2 relative z-10">
-                              <h4 className="text-xs sm:text-sm font-extrabold tracking-tight text-white font-sans truncate">
-                                {selectedCert.technologyArea}
-                              </h4>
-                              <p className="text-[8px] text-slate-400 font-mono truncate uppercase">
-                                VERIFIED PROFESSIONAL COMPETENT
-                              </p>
-                            </div>
-
-                            {/* Metadata stamp footer of hologram */}
-                            <div className="flex justify-between items-end border-t border-slate-900 pt-2 relative z-10">
-                              <div>
-                                <span className="text-[8px] text-slate-500 block leading-none font-mono">CANDIDATE:</span>
-                                <span className="text-[9px] font-bold text-slate-300 font-sans block truncate max-w-[120px]">{props.user.fullName}</span>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-[8px] text-slate-500 block leading-none font-mono">VERIFICATION:</span>
-                                <span className="text-[9px] font-mono font-bold text-slate-400 block tracking-wider">
-                                  {selectedCert.verificationHash.substr(0, 10).toUpperCase()}
-                                </span>
-                              </div>
-                            </div>
-
-                          </div>
+                          </div>                       </div>
 
                           {/* Post Card Footer */}
                           <div className="mt-2 text-[9px] text-slate-400 font-mono flex items-center justify-between border-t border-slate-100 pt-2">
@@ -1038,6 +1147,21 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                     </div>
 
                   </div>
+
+                  {selectedCert && (
+                    <div className="mt-6 pt-6 border-t border-slate-150 animate-fade-in" id="badge-generator-studio-wrap">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest font-mono mb-3 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+                        <span>AI Visual Badge Studio</span>
+                      </h3>
+                      <AIBadgeConsole 
+                        user={props.user} 
+                        certificate={selectedCert} 
+                        selectedTheme={badgeTheme}
+                        onChangeTheme={setBadgeTheme}
+                      />
+                    </div>
+                  )}
 
                 </div>
               )}
@@ -1067,9 +1191,18 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                     <tbody className="divide-y divide-slate-100">
                       {attempts.map((att) => (
                         <tr key={att.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="py-2.5 px-3.5 font-bold text-slate-900">{att.category}</td>
+                          <td className="py-2.5 px-3.5 font-bold text-slate-900">
+                            <div className="flex items-center gap-1.5">
+                              <span>{att.category}</span>
+                              {att.isPractice && (
+                                <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 text-[9px] font-bold rounded uppercase font-mono border border-amber-250">
+                                  Practice
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="py-2.5 px-3.5 capitalize font-mono text-slate-500 text-[11px]">{att.difficulty}</td>
-                          <td className="py-2.5 px-3.5 text-slate-550 font-mono text-[11px]">{att.endTime ? att.endTime.split("T")[0] : att.startTime.split("T")[0]}</td>
+                          <td className="py-2.5 px-3.5 text-slate-500 font-mono text-[11px]">{att.endTime ? att.endTime.split("T")[0] : att.startTime.split("T")[0]}</td>
                           <td className="py-2.5 px-3.5">
                             <span className={`inline-flex items-center gap-1 font-mono font-bold ${att.integrityScore >= 80 ? "text-emerald-700" : att.integrityScore >= 60 ? "text-amber-700" : "text-rose-700"}`}>
                               {att.integrityScore}% 
@@ -1136,7 +1269,7 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                       ))}
                       {attempts.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="text-center py-5 text-slate-450 font-mono">No attempts on record. Select tab to launch.</td>
+                          <td colSpan={6} className="text-center py-5 text-slate-500 font-mono">No attempts on record. Select tab to launch.</td>
                         </tr>
                       )}
                     </tbody>
