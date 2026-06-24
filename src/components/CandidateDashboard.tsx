@@ -31,7 +31,8 @@ import {
   ExternalLink,
   Twitter,
   Brain,
-  Trophy
+  Trophy,
+  Search
 } from "lucide-react";
 import StrengthsWeaknessesModal from "./StrengthsWeaknessesModal";
 import MockInterviewModal from "./MockInterviewModal";
@@ -84,6 +85,58 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
   const [includeScore, setIncludeScore] = useState(true);
   const [includeIntegrity, setIncludeIntegrity] = useState(true);
   const [customHashtags, setCustomHashtags] = useState("#TechScreen #Certified #CompetencyHub");
+
+  // Global Search states
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
+  // Hardcoded category tags to match domains-grid exactly
+  const assessmentCategories = [
+    {
+      name: "Full Stack Development",
+      desc: "Assessments spanning react functional hooks, rest endpoints, WebSockets concurrency, state caches, and index scaling.",
+      tech: ["React", "Node.js", "WebSockets", "SQL"]
+    },
+    {
+      name: "Front-End Development",
+      desc: "Responsive web layouts, render lifecycles, CSS flexbox/grid density, memoizations, and DOM manipulations.",
+      tech: ["HTML5", "CSS3", "React", "TypeScript"]
+    },
+    {
+      name: "Back-End Development",
+      desc: "Rest protocols, event loop blockings, asynchronous I/O architectures, DB clusters, and security tokens.",
+      tech: ["Express", "Python", "Go", "Docker"]
+    },
+    {
+      name: "UI/UX Development",
+      desc: "Framer design grids, micro-interactions, dark mode aesthetics, contrast ratios, and touch-target bounds.",
+      tech: ["Figma", "Design Systems", "Tailwind"]
+    },
+    {
+      name: "Quality Assurance",
+      desc: "Static reviews, penetration testing checks, OWASP injections, integration unit tests, and performance SLAs.",
+      tech: ["Jest", "Cypress", "Selenium", "OWASP"]
+    },
+    {
+      name: "Software Project Management",
+      desc: "Scrum commitments, commitment velocities, mid-sprint scope creep adjustments, and Jira planning systems.",
+      tech: ["Agile", "Scrum", "Jira", "Risk Management"]
+    }
+  ];
+
+  const filteredCategories = searchQuery.trim() === "" 
+    ? [] 
+    : assessmentCategories.filter(cat => 
+        cat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cat.tech.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
+
+  const filteredCerts = searchQuery.trim() === ""
+    ? []
+    : certs.filter(cert => 
+        cert.technologyArea.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cert.verificationHash.toLowerCase().includes(searchQuery.toLowerCase())
+      );
 
   useEffect(() => {
     if (certs.length > 0 && !selectedCertId) {
@@ -248,6 +301,118 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
             <span className="font-bold text-sm text-slate-900 block leading-tight">Candidate Hub</span>
             <span className="text-[10px] text-indigo-600 font-semibold uppercase tracking-wider">Verify & Earn Credentials</span>
           </div>
+        </div>
+
+        {/* Global Search Bar */}
+        <div className="flex-1 max-w-md mx-4 relative min-w-[260px] my-2 md:my-0" id="candidate-global-search-container">
+          <div className="relative">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search assessments or certificates by name..."
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchFocused(true);
+              }}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => {
+                // Delay hiding results so that click handlers can execute first
+                setTimeout(() => setIsSearchFocused(false), 200);
+              }}
+              className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 rounded-xl pl-9.5 pr-8 py-2 text-xs text-slate-900 outline-none transition"
+              id="candidate-global-search-input"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-650 font-bold text-sm"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {/* Search Dropdown Panel */}
+          {isSearchFocused && searchQuery.trim() !== "" && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 max-h-80 overflow-y-auto text-left" id="search-results-dropdown">
+              {filteredCategories.length === 0 && filteredCerts.length === 0 ? (
+                <div className="p-3 text-center text-xs text-slate-500 font-medium">
+                  No matching assessments or certificates found for "{searchQuery}"
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Categories Group */}
+                  {filteredCategories.length > 0 && (
+                    <div>
+                      <div className="px-2 py-1 text-[10px] text-indigo-600 font-bold uppercase tracking-wider border-b border-slate-100 mb-1">
+                        Assessment Categories ({filteredCategories.length})
+                      </div>
+                      <div className="space-y-0.5">
+                        {filteredCategories.map(cat => (
+                          <button
+                            key={cat.name}
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("launch");
+                              setSearchQuery("");
+                              setTimeout(() => {
+                                document.getElementById(`domain-card-${cat.name.replace(/\s+/g, "-")}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                              }, 100);
+                            }}
+                            className="w-full text-left p-2 hover:bg-indigo-50 rounded-lg transition-colors flex flex-col gap-0.5 cursor-pointer"
+                          >
+                            <span className="font-bold text-xs text-slate-900">{cat.name}</span>
+                            <span className="text-[10px] text-slate-500 line-clamp-1">{cat.desc}</span>
+                            <div className="flex gap-1 mt-1">
+                              {cat.tech.slice(0, 3).map(t => (
+                                <span key={t} className="text-[8px] bg-slate-100 border border-slate-200 px-1 py-0.2 text-slate-500 font-mono rounded">{t}</span>
+                              ))}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Certificates Group */}
+                  {filteredCerts.length > 0 && (
+                    <div>
+                      <div className="px-2 py-1 text-[10px] text-indigo-600 font-bold uppercase tracking-wider border-b border-slate-100 mb-1">
+                        Earned Certificates ({filteredCerts.length})
+                      </div>
+                      <div className="space-y-0.5">
+                        {filteredCerts.map(cert => (
+                          <button
+                            key={cert.id}
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("history");
+                              setSelectedCertId(cert.id);
+                              setSearchQuery("");
+                              setTimeout(() => {
+                                document.getElementById(`cert-item-${cert.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                              }, 100);
+                            }}
+                            className="w-full text-left p-2 hover:bg-emerald-50 rounded-lg transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                          >
+                            <div className="min-w-0 flex-1 text-left">
+                              <span className="font-bold text-xs text-slate-900 block truncate">{cert.technologyArea}</span>
+                              <span className="text-[10px] text-slate-500 font-mono block truncate">Issued: {cert.assessmentDate} • Hash: {cert.verificationHash.slice(0, 8)}</span>
+                            </div>
+                            <span className="shrink-0 text-[10px] bg-emerald-50 border border-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded">
+                              Score: {cert.score}%
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Action Controls */}

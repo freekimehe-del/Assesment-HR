@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import { AssessmentAttempt, Question, ProctoringLog, AICodeReviewResult } from "../types";
 import { 
   ShieldAlert, 
@@ -25,7 +26,8 @@ import {
   FileText,
   Lightbulb,
   Zap,
-  Check
+  Check,
+  LogOut
 } from "lucide-react";
 
 interface AssessmentEngineProps {
@@ -127,6 +129,7 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
   const [proctorFlags, setProctorFlags] = useState<ProctoringLog[]>([]);
   const [integrityScore, setIntegrityScore] = useState(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   // Concurrency Guard
   const [isNavigating, setIsNavigating] = useState(false);
@@ -562,6 +565,21 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
     return `${min.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
   };
 
+  const isCurrentAnswered = React.useMemo(() => {
+    if (!activeQuestion) return false;
+    if (activeQuestion.type === "coding") {
+      return code.trim() !== "";
+    } else if (activeQuestion.type === "fill_in_blank") {
+      return fillInText.trim() !== "";
+    } else {
+      // mcq, multiselect, boolean, scenario
+      if (Array.isArray(selectedMcq)) {
+        return selectedMcq.length > 0;
+      }
+      return selectedMcq !== undefined && selectedMcq !== null && selectedMcq !== "";
+    }
+  }, [activeQuestion, code, fillInText, selectedMcq]);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col relative overflow-hidden" id="assessment-workspace-root">
       
@@ -629,6 +647,15 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
               <span>Restore Enforced Fullscreen</span>
             </button>
           )}
+
+          <button
+            onClick={() => setShowExitConfirm(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-slate-100 border border-slate-250 hover:bg-slate-200 hover:border-slate-350 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-slate-400/50"
+            id="exit-assessment-btn"
+          >
+            <LogOut className="w-3.5 h-3.5 text-slate-500" />
+            <span>Exit Session</span>
+          </button>
         </div>
       </header>
 
@@ -650,203 +677,243 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
       <div className="flex-grow grid grid-cols-1 lg:grid-cols-12 relative z-10 overflow-hidden" id="workspace-layout">
         
         {/* LEFT COLUMN: Question Details Frame (Col-span-5) */}
-        <section className="lg:col-span-5 border-r border-slate-200 flex flex-col h-[calc(100vh-61px)] overflow-y-auto bg-white p-5 space-y-5" id="left-question-frame">
-          <div className="flex items-center justify-between">
-            <span className="px-3 py-1 bg-slate-50 border border-slate-200 text-[10px] text-slate-600 font-bold rounded-lg uppercase tracking-wider font-mono">
-              Question {currentIdx + 1} of {attempt.questions.length}
-            </span>
-            <span className="text-xs text-slate-500 font-mono font-semibold">Points: {activeQuestion.weightage}</span>
-          </div>
-
-          <div className="space-y-2">
-            <h1 className="text-base font-bold text-slate-900 tracking-tight leading-snug">{activeQuestion.title}</h1>
-            <div className="flex gap-1.5 flex-wrap">
-              {activeQuestion.tags.map(tag => (
-                <span key={tag} className="text-[9px] bg-slate-50 border border-slate-200 text-slate-600 font-mono px-2 py-0.5 rounded-md font-medium">{tag}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* Real-time Pacing & Progress Monitor Widget */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3" id="pacing-dashboard-card">
-            <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-              <span className="flex items-center gap-1.5 text-indigo-700">
-                <Clock className="w-4 h-4 text-indigo-600 animate-pulse" />
-                <span>Pace & Progress Monitor</span>
-              </span>
-              <span className="font-mono text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold">
-                {completionPercent}% Questions Done
-              </span>
-            </div>
-
-            {/* Interactive Progress Bars */}
-            <div className="space-y-3">
-              {/* Question Completion Bar */}
-              <div>
-                <div className="flex justify-between items-center text-[11px] mb-1">
-                  <span className="text-slate-600 font-medium">Progress by Questions</span>
-                  <span className="font-mono font-bold text-slate-800">{answeredCount} of {attempt.questions.length} completed</span>
-                </div>
-                <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="questions-progress-bar">
-                  <div 
-                    className="h-full bg-indigo-600 rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${completionPercent}%` }}
-                  />
-                </div>
+        <section className="lg:col-span-5 border-r border-slate-200 flex flex-col h-[calc(100vh-61px)] overflow-hidden bg-white relative" id="left-question-frame">
+          {/* Loading Transition Overlay */}
+          {isNavigating && (
+            <div className="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center z-50 animate-fade-in" id="loading-transition-overlay">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-xs font-bold text-slate-550 font-sans tracking-wide">Syncing and Loading Next Item...</span>
               </div>
+            </div>
+          )}
 
-              {/* Time Remaining Bar */}
-              <div>
-                <div className="flex justify-between items-center text-[11px] mb-1">
-                  <span className="text-slate-600 font-medium">Overall Duration Progress</span>
-                  <span className="font-mono font-bold text-slate-800">{formatTimerValue(overallRemaining)} remaining</span>
-                </div>
-                <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="time-progress-bar">
-                  <div 
-                    className={`h-full rounded-full transition-all duration-1000 ease-linear ${
-                      overallTimeRatio < 0.15 
-                        ? "bg-rose-500 animate-pulse" 
-                        : overallTimeRatio < 0.35 
-                        ? "bg-amber-500" 
-                        : "bg-emerald-500"
-                    }`}
-                    style={{ width: `${(1 - overallTimeRatio) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Current Question Time Bar */}
-              <div>
-                <div className="flex justify-between items-center text-[11px] mb-1">
-                  <span className="text-slate-600 font-medium">Current Question Timeout</span>
-                  <span className={`font-mono font-bold ${questionTimeRatio < 0.2 ? "text-rose-600 animate-pulse" : "text-slate-800"}`}>
-                    {formatTimerValue(questionRemaining)} / {formatTimerValue(activeQuestion.timeAllocation)}
+          <div className="flex-grow overflow-y-auto p-5 flex flex-col space-y-5" id="left-question-scroll-content">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentIdx}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.25, ease: "easeInOut" }}
+                className="flex flex-col space-y-5 flex-grow"
+                id="active-question-wrapper"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="px-3 py-1 bg-slate-50 border border-slate-200 text-[10px] text-slate-600 font-bold rounded-lg uppercase tracking-wider font-mono">
+                    Question {currentIdx + 1} of {attempt.questions.length}
                   </span>
+                  <span className="text-xs text-slate-500 font-mono font-semibold">Points: {activeQuestion.weightage}</span>
                 </div>
-                <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="question-time-progress-bar">
-                  <div 
-                    className={`h-full rounded-full transition-all duration-1000 ease-linear ${
-                      questionTimeRatio < 0.2 
-                        ? "bg-rose-500 animate-pulse" 
-                        : questionTimeRatio < 0.4 
-                        ? "bg-amber-500" 
-                        : "bg-indigo-500"
-                    }`}
-                    style={{ width: `${questionTimeRatio * 100}%` }}
-                  />
+
+                <div className="space-y-2">
+                  <h1 className="text-base font-bold text-slate-900 tracking-tight leading-snug">{activeQuestion.title}</h1>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {activeQuestion.tags.map(tag => (
+                      <span key={tag} className="text-[9px] bg-slate-50 border border-slate-200 text-slate-600 font-mono px-2 py-0.5 rounded-md font-medium">{tag}</span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Pacing Advice Banner */}
-            <div className={`p-3 rounded-lg text-xs flex items-start gap-2.5 transition-colors duration-300 ${
-              pacingWarning 
-                ? "bg-rose-50 border border-rose-200 text-rose-800" 
-                : "bg-indigo-50 border border-indigo-100 text-indigo-800"
-            }`} id="pacing-advice-container">
-              <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${pacingWarning ? "text-rose-600 animate-pulse" : "text-indigo-600"}`} />
-              <div className="space-y-0.5">
-                <span className="font-bold block text-[12px]">{pacingStatus}</span>
-                <span className="text-slate-600 text-[11px] block leading-relaxed">{pacingAdvice}</span>
-              </div>
-            </div>
-          </div>
+                {/* Real-time Pacing & Progress Monitor Widget */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3" id="pacing-dashboard-card">
+                  <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+                    <span className="flex items-center gap-1.5 text-indigo-700">
+                      <Clock className="w-4 h-4 text-indigo-600 animate-pulse" />
+                      <span>Pace & Progress Monitor</span>
+                    </span>
+                    <span className="font-mono text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold">
+                      {completionPercent}% Questions Done
+                    </span>
+                  </div>
 
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3" id="question-prompt-text">
-            <div className="flex gap-2 items-center text-indigo-650 text-xs font-bold uppercase tracking-wider">
-              <BookOpen className="w-4 h-4" />
-              <span>Specification details</span>
-            </div>
-            <p className="text-slate-700 text-xs leading-relaxed whitespace-pre-wrap font-sans">{activeQuestion.description}</p>
-          </div>
-
-          {/* CHOOSE SELECTION AREAS */}
-
-          {/* 1. MCQ OPTIONS */}
-          {(activeQuestion.type === "mcq" || activeQuestion.type === "multiselect" || activeQuestion.type === "boolean" || activeQuestion.type === "scenario") && activeQuestion.options && (
-            <div className="space-y-2 pt-1" id="mcq-options-container">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                {activeQuestion.type === "multiselect" ? "Select Multiple Answers:" : "Choose One Option:"}
-              </label>
-              
-              <div className="space-y-2">
-                {activeQuestion.options.map((opt, idx) => {
-                  const isChecked = Array.isArray(selectedMcq) 
-                    ? selectedMcq.includes(opt) 
-                    : selectedMcq === opt;
-                  
-                  return (
-                    <button
-                      key={idx}
-                      onClick={() => handleMcqSelect(opt)}
-                      className={`w-full text-left p-3.5 rounded-lg border transition-all cursor-pointer flex items-start gap-3 text-xs font-semibold leading-relaxed ${
-                        isChecked 
-                          ? "border-indigo-500 bg-indigo-50/20 text-indigo-700" 
-                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                      id={`mcq-opt-${idx}`}
-                    >
-                      <div className={`w-5 h-5 rounded flex items-center justify-center font-bold text-[10px] border flex-shrink-0 mt-0.5 ${
-                        isChecked ? "border-indigo-500 bg-indigo-650 text-white" : "border-slate-300 text-slate-400 bg-transparent"
-                      }`}>
-                        {String.fromCharCode(65 + idx)}
+                  {/* Interactive Progress Bars */}
+                  <div className="space-y-3">
+                    {/* Question Completion Bar */}
+                    <div>
+                      <div className="flex justify-between items-center text-[11px] mb-1">
+                        <span className="text-slate-600 font-medium">Progress by Questions</span>
+                        <span className="font-mono font-bold text-slate-800">{answeredCount} of {attempt.questions.length} completed</span>
                       </div>
-                      <span>{opt}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                      <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="questions-progress-bar">
+                        <div 
+                          className="h-full bg-indigo-600 rounded-full transition-all duration-500 ease-out"
+                          style={{ width: `${completionPercent}%` }}
+                        />
+                      </div>
+                    </div>
 
-          {/* 2. FILL IN THE BLANK */}
-          {activeQuestion.type === "fill_in_blank" && (
-            <div className="space-y-2 pt-1" id="fill-in-container">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Type Your Technical Answer:
-              </label>
-              <input
-                type="text"
-                placeholder="Type precise term here (case insensitive)..."
-                value={fillInText}
-                onChange={(e) => setFillInText(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-xs font-mono focus:border-indigo-500 text-slate-950 outline-none transition"
-                id="fill-in-input"
-              />
-            </div>
-          )}
+                    {/* Time Remaining Bar */}
+                    <div>
+                      <div className="flex justify-between items-center text-[11px] mb-1">
+                        <span className="text-slate-600 font-medium">Overall Duration Progress</span>
+                        <span className="font-mono font-bold text-slate-800">{formatTimerValue(overallRemaining)} remaining</span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="time-progress-bar">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-1000 ease-linear ${
+                            overallTimeRatio < 0.15 
+                              ? "bg-rose-500 animate-pulse" 
+                              : overallTimeRatio < 0.35 
+                              ? "bg-amber-500" 
+                              : "bg-emerald-500"
+                          }`}
+                          style={{ width: `${(1 - overallTimeRatio) * 100}%` }}
+                        />
+                      </div>
+                    </div>
 
-          {/* 3. CODING SPECIFIC SPECIFICATIONS PANEL */}
-          {activeQuestion.type === "coding" && activeQuestion.codingPrompt && (
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2 text-xs leading-relaxed" id="coding-specific-prompt">
-              <h5 className="font-bold text-amber-800 flex items-center gap-1.5">
-                <Code className="w-4 h-4 text-amber-700" />
-                <span>Coding Exercise Rules</span>
-              </h5>
-              <p className="text-amber-950 font-mono whitespace-pre-wrap text-[11px]">{activeQuestion.codingPrompt}</p>
-            </div>
-          )}
+                    {/* Current Question Time Bar */}
+                    <div>
+                      <div className="flex justify-between items-center text-[11px] mb-1">
+                        <span className="text-slate-600 font-medium">Current Question Timeout</span>
+                        <span className={`font-mono font-bold ${questionTimeRatio < 0.2 ? "text-rose-600 animate-pulse" : "text-slate-800"}`}>
+                          {formatTimerValue(questionRemaining)} / {formatTimerValue(activeQuestion.timeAllocation)}
+                        </span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden" id="question-time-progress-bar">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-1000 ease-linear ${
+                            questionTimeRatio < 0.2 
+                              ? "bg-rose-500 animate-pulse" 
+                              : questionTimeRatio < 0.4 
+                              ? "bg-amber-500" 
+                              : "bg-indigo-500"
+                          }`}
+                          style={{ width: `${questionTimeRatio * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-          {/* Left bottom Navigation buttons */}
-          <div className="pt-4 border-t border-slate-150 flex items-center justify-between mt-auto bg-transparent" id="navigation-controls">
-            <button
-              onClick={handlePrevQuestion}
-              disabled={currentIdx === 0}
-              className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 disabled:opacity-40 text-slate-600 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer"
-              id="prev-question-btn"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
-            </button>
+                  {/* Pacing Advice Banner */}
+                  <div className={`p-3 rounded-lg text-xs flex items-start gap-2.5 transition-colors duration-300 ${
+                    pacingWarning 
+                      ? "bg-rose-50 border border-rose-200 text-rose-800" 
+                      : "bg-indigo-50 border border-indigo-100 text-indigo-800"
+                  }`} id="pacing-advice-container">
+                    <ShieldAlert className={`w-4 h-4 shrink-0 mt-0.5 ${pacingWarning ? "text-rose-600 animate-pulse" : "text-indigo-600"}`} />
+                    <div className="space-y-0.5">
+                      <span className="font-bold block text-[12px]">{pacingStatus}</span>
+                      <span className="text-slate-600 text-[11px] block leading-relaxed">{pacingAdvice}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3" id="question-prompt-text">
+                  <div className="flex gap-2 items-center text-indigo-650 text-xs font-bold uppercase tracking-wider">
+                    <BookOpen className="w-4 h-4" />
+                    <span>Specification details</span>
+                  </div>
+                  <p className="text-slate-700 text-xs leading-relaxed whitespace-pre-wrap font-sans">{activeQuestion.description}</p>
+                </div>
+
+                {/* CHOOSE SELECTION AREAS */}
+
+                {/* 1. MCQ OPTIONS */}
+                {(activeQuestion.type === "mcq" || activeQuestion.type === "multiselect" || activeQuestion.type === "boolean" || activeQuestion.type === "scenario") && activeQuestion.options && (
+                  <div className="space-y-2 pt-1" id="mcq-options-container">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      {activeQuestion.type === "multiselect" ? "Select Multiple Answers:" : "Choose One Option:"}
+                    </label>
+                    
+                    <div className="space-y-2">
+                      {activeQuestion.options.map((opt, idx) => {
+                        const isChecked = Array.isArray(selectedMcq) 
+                          ? selectedMcq.includes(opt) 
+                          : selectedMcq === opt;
+                        
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => handleMcqSelect(opt)}
+                            className={`w-full text-left p-3.5 rounded-lg border transition-all cursor-pointer flex items-start gap-3 text-xs font-semibold leading-relaxed ${
+                              isChecked 
+                                ? "border-indigo-500 bg-indigo-50/20 text-indigo-700" 
+                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                            }`}
+                            id={`mcq-opt-${idx}`}
+                          >
+                            <div className={`w-5 h-5 rounded flex items-center justify-center font-bold text-[10px] border flex-shrink-0 mt-0.5 ${
+                              isChecked ? "border-indigo-500 bg-indigo-650 text-white" : "border-slate-300 text-slate-400 bg-transparent"
+                            }`}>
+                              {String.fromCharCode(65 + idx)}
+                            </div>
+                            <span>{opt}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. FILL IN THE BLANK */}
+                {activeQuestion.type === "fill_in_blank" && (
+                  <div className="space-y-2 pt-1" id="fill-in-container">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Type Your Technical Answer:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Type precise term here (case insensitive)..."
+                      value={fillInText}
+                      onChange={(e) => setFillInText(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-2.5 text-xs font-mono focus:border-indigo-500 text-slate-950 outline-none transition"
+                      id="fill-in-input"
+                    />
+                  </div>
+                )}
+
+                {/* 3. CODING SPECIFIC SPECIFICATIONS PANEL */}
+                {activeQuestion.type === "coding" && activeQuestion.codingPrompt && (
+                  <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-2 text-xs leading-relaxed" id="coding-specific-prompt">
+                    <h5 className="font-bold text-amber-800 flex items-center gap-1.5">
+                      <Code className="w-4 h-4 text-amber-700" />
+                      <span>Coding Exercise Rules</span>
+                    </h5>
+                    <p className="text-amber-950 font-mono whitespace-pre-wrap text-[11px]">{activeQuestion.codingPrompt}</p>
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* Left bottom Sticky Navigation controls bar */}
+          <div className="p-4 border-t border-slate-150 flex items-center justify-between bg-slate-50 shrink-0 z-10 animate-fade-in" id="navigation-controls">
+            {currentIdx > 0 ? (
+              <button
+                onClick={handlePrevQuestion}
+                className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-400/50"
+                id="prev-question-btn"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Back</span>
+              </button>
+            ) : (
+              <div className="w-10" />
+            )}
             
-            <button
-              onClick={() => handleNextQuestion(false)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shadow-xs"
-              id="next-question-btn"
-            >
-              <span>{currentIdx < attempt.questions.length - 1 ? "Next Item" : "Complete & Submit"}</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+            <AnimatePresence mode="wait">
+              {isCurrentAnswered ? (
+                <motion.button
+                  key="next-btn-active"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => handleNextQuestion(false)}
+                  className="px-4.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-indigo-150/30 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  id="next-question-btn"
+                >
+                  <span>{currentIdx < attempt.questions.length - 1 ? "Next Question" : "Submit Assessment"}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </motion.button>
+              ) : (
+                <div className="text-[11px] font-semibold text-slate-400 italic bg-slate-100 px-3 py-1.5 rounded-lg border border-dashed border-slate-200" id="unanswered-warning">
+                  Select answer to continue
+                </div>
+              )}
+            </AnimatePresence>
           </div>
         </section>
 
@@ -1246,6 +1313,61 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
           </div>
         </div>
       )}
+
+      {/* Exit Session Confirmation Modal */}
+      <AnimatePresence>
+        {showExitConfirm && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[999] p-4" id="exit-confirmation-modal-overlay">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-100 overflow-hidden relative"
+              id="exit-confirmation-modal-card"
+            >
+              {/* Header Decorative accent */}
+              <div className="h-2 bg-slate-200" />
+              
+              <div className="p-6 flex flex-col items-center text-center space-y-4">
+                <div className="w-12 h-12 bg-rose-50 border border-rose-100 rounded-full flex items-center justify-center text-rose-600">
+                  <AlertTriangle className="w-6 h-6 animate-pulse" />
+                </div>
+                
+                <div className="space-y-1.5">
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight">Pause & Exit Assessment?</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Your answers will be saved. However, the section time limit remains active. You can resume this session later from the candidate dashboard.
+                  </p>
+                </div>
+
+                {/* Confirm Options */}
+                <div className="flex items-center gap-3 w-full pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowExitConfirm(false)}
+                    className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold rounded-xl transition cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-300"
+                    id="cancel-exit-btn"
+                  >
+                    Keep Testing
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExitConfirm(false);
+                      props.onExit();
+                    }}
+                    className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-md shadow-rose-150/30 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                    id="confirm-exit-btn"
+                  >
+                    Yes, Exit Session
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
