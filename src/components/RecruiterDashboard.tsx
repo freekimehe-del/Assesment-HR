@@ -51,7 +51,12 @@ import {
   Trash2,
   Plus,
   ExternalLink,
-  Brain
+  Brain,
+  Bell,
+  Mail,
+  Settings,
+  Send,
+  AlertCircle
 } from "lucide-react";
 import StrengthsWeaknessesModal from "./StrengthsWeaknessesModal";
 
@@ -63,11 +68,48 @@ interface RecruiterDashboardProps {
 }
 
 export default function RecruiterDashboard(props: RecruiterDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"search" | "compare" | "interviews" | "analytics" | "subscription">("search");
+  const [activeTab, setActiveTab] = useState<"search" | "compare" | "interviews" | "analytics" | "subscription" | "notifications">("search");
   
   // AI Strengths & Weaknesses Modal States
   const [selectedAnalysisAttemptId, setSelectedAnalysisAttemptId] = useState<string | null>(null);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
+
+  // Automated Alert System States
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [notifSettings, setNotifSettings] = useState<any>({
+    completionAlerts: true,
+    upcomingInterviewAlerts: true,
+    reminderThresholdHours: 24,
+    smtpHost: "smtp.saas-screening.com",
+    smtpPort: 587,
+    recipientEmails: "recruiter@saas.com, HR-team@saas-screening.com",
+    senderName: "SaaS TalentScreen Advisor",
+    senderEmail: "advisor@saas-screening.com"
+  });
+  const [fetchingNotifications, setFetchingNotifications] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [simulationLoading, setSimulationLoading] = useState<string | null>(null);
+  const [notifSuccessMessage, setNotifSuccessMessage] = useState<string | null>(null);
+  const [notifErrorMessage, setNotifErrorMessage] = useState<string | null>(null);
+  const [selectedEmailBody, setSelectedEmailBody] = useState<any | null>(null);
+
+  const fetchNotifications = async (showLoading = false) => {
+    if (showLoading) setFetchingNotifications(true);
+    try {
+      const res = await fetch("/api/recruiter/notifications");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setNotifications(data.notifications || []);
+          setNotifSettings(data.settings || {});
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch automated notifications:", err);
+    } finally {
+      if (showLoading) setFetchingNotifications(false);
+    }
+  };
   
   // Interview Scheduler State
   const [interviews, setInterviews] = useState<any[]>(() => {
@@ -117,6 +159,33 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
 
   useEffect(() => {
     localStorage.setItem("techscreen_interviews", JSON.stringify(interviews));
+  }, [interviews]);
+
+  useEffect(() => {
+    fetchNotifications(true);
+    const interval = setInterval(() => {
+      fetchNotifications(false);
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (interviews.length > 0) {
+      const checkInterviewsAlerts = async () => {
+        try {
+          await fetch("/api/recruiter/notifications/check-interviews", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ interviews })
+          });
+          fetchNotifications(false);
+        } catch (err) {
+          console.error("Failed to check upcoming interview alerts:", err);
+        }
+      };
+      
+      checkInterviewsAlerts();
+    }
   }, [interviews]);
 
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
@@ -238,6 +307,74 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
     }
   };
 
+  const handleSaveNotifSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    setNotifSuccessMessage(null);
+    setNotifErrorMessage(null);
+    try {
+      const res = await fetch("/api/recruiter/notifications/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(notifSettings)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setNotifSettings(data.settings);
+          setNotifSuccessMessage("SMTP server settings synchronized and verified!");
+          setTimeout(() => setNotifSuccessMessage(null), 4000);
+        } else {
+          setNotifErrorMessage("Failed to synchronize settings with relay.");
+        }
+      }
+    } catch (err) {
+      setNotifErrorMessage("Relay connection timed out.");
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleSimulateNotification = async (type: string) => {
+    setSimulationLoading(type);
+    setNotifSuccessMessage(null);
+    try {
+      const res = await fetch("/api/recruiter/notifications/simulate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setNotifications(data.notifications || []);
+          setNotifSuccessMessage(`Simulated ${type === "assessment_completion" ? "candidate assessment completion email dispatch" : "upcoming interview schedule warning"}!`);
+          setTimeout(() => setNotifSuccessMessage(null), 4000);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSimulationLoading(null);
+    }
+  };
+
+  const handleClearNotifications = async () => {
+    try {
+      const res = await fetch("/api/recruiter/notifications/clear", {
+        method: "POST"
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setNotifications([]);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleInviteRecruiter = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inviteEmail) return;
@@ -346,6 +483,7 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
               { id: "search", label: "Talent Repository", icon: Search },
               { id: "compare", label: "Candidate Comparison", icon: SlidersHorizontal },
               { id: "interviews", label: "Interview Scheduler", icon: Calendar },
+              { id: "notifications", label: "Automated Alerts", icon: Bell },
               { id: "analytics", label: "Talent Analytics", icon: TrendingUp },
               { id: "subscription", label: "Team & Subscriptions", icon: Building2 }
             ].map((tab) => {
@@ -363,6 +501,11 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
                   {tab.id === "compare" && compareIds.length > 0 && (
                     <span className="ml-auto px-1.5 py-0.5 bg-indigo-600 text-white font-bold rounded-md text-[9px] font-mono leading-none">
                       {compareIds.length}
+                    </span>
+                  )}
+                  {tab.id === "notifications" && notifications.length > 0 && (
+                    <span className="ml-auto px-1.5 py-0.5 bg-rose-600 text-white font-bold rounded-full text-[9px] font-mono leading-none">
+                      {notifications.length}
                     </span>
                   )}
                 </button>
@@ -1320,6 +1463,338 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
                   </div>
                 </div>
 
+              </div>
+            </div>
+          )}
+
+          {/* AUTOMATED ALERTS & NOTIFICATION SYSTEM TAB */}
+          {activeTab === "notifications" && (
+            <div className="space-y-5 animate-fade-in" id="notifications-tab-panel">
+              {/* Header metrics card */}
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+                <div className="border-b border-slate-150 pb-3 mb-4 flex flex-wrap justify-between items-center gap-2">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Bell className="text-indigo-600 w-4.5 h-4.5 animate-bounce" />
+                      <span>SMTP Notification & Automated Alerts Hub</span>
+                    </h2>
+                    <p className="text-slate-500 text-xs mt-0.5">Configure automated recruiter email notifications triggered by candidate actions and scheduling alerts.</p>
+                  </div>
+                  <button
+                    onClick={handleClearNotifications}
+                    className="px-3 py-1 bg-slate-50 hover:bg-rose-50 hover:text-rose-700 text-slate-600 border border-slate-200 hover:border-rose-200 transition text-[10px] font-bold rounded-lg cursor-pointer"
+                  >
+                    Clear Outbox Logs
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                  <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Outbox Logs</span>
+                    <span className="block text-lg font-mono font-bold text-slate-800 mt-1">{notifications.length} Emails</span>
+                  </div>
+                  <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Completion Rules</span>
+                    <span className={`block text-xs font-bold mt-2 font-mono ${notifSettings.completionAlerts ? "text-emerald-600" : "text-slate-500"}`}>
+                      {notifSettings.completionAlerts ? "✓ Enabled" : "✕ Disabled"}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Interview Reminders</span>
+                    <span className={`block text-xs font-bold mt-2 font-mono ${notifSettings.upcomingInterviewAlerts ? "text-emerald-600" : "text-slate-500"}`}>
+                      {notifSettings.upcomingInterviewAlerts ? `✓ Active (${notifSettings.reminderThresholdHours}h)` : "✕ Disabled"}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Relay Gateway</span>
+                    <span className="block text-[11px] font-bold text-indigo-600 mt-2 font-mono flex items-center justify-center gap-1.5">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                      <span>{notifSettings.smtpHost}</span>
+                    </span>
+                  </div>
+                </div>
+
+                {notifSuccessMessage && (
+                  <div className="mt-4 p-3 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-lg text-xs font-semibold">
+                    ✓ {notifSuccessMessage}
+                  </div>
+                )}
+
+                {notifErrorMessage && (
+                  <div className="mt-4 p-3 bg-rose-50 border border-rose-250 text-rose-800 rounded-lg text-xs font-semibold">
+                    ✕ {notifErrorMessage}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                {/* Left Column - Dispatch Logs */}
+                <div className="lg:col-span-7 space-y-4">
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+                    <h3 className="text-xs uppercase font-bold text-slate-500 tracking-wider mb-3 flex items-center gap-1.5">
+                      <Mail className="w-4 h-4 text-indigo-500" />
+                      <span>SMTP Relay Dispatch Logs & Outbox</span>
+                    </h3>
+
+                    <div className="space-y-3.5 max-h-[580px] overflow-y-auto pr-1">
+                      {notifications.map((notif) => {
+                        const isCompletion = notif.type === "assessment_completion";
+                        const isSelected = selectedEmailBody?.id === notif.id;
+
+                        return (
+                          <div
+                            key={notif.id}
+                            className={`p-4 border rounded-xl transition-all duration-250 ${
+                              isSelected
+                                ? "bg-indigo-50/40 border-indigo-250 shadow-3xs"
+                                : "bg-white border-slate-200 hover:border-slate-350"
+                            }`}
+                          >
+                            <div className="flex justify-between items-start gap-2 mb-2">
+                              <span
+                                className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                                  isCompletion
+                                    ? "bg-emerald-55 text-emerald-700 border border-emerald-200"
+                                    : "bg-amber-55 text-amber-700 border border-amber-200"
+                                }`}
+                              >
+                                {isCompletion ? "Assessment Done" : "Interview Schedule"}
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {new Date(notif.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </span>
+                            </div>
+
+                            <h4 className="font-bold text-slate-900 text-xs mb-1">{notif.title}</h4>
+                            <p className="text-slate-600 text-xs leading-relaxed font-sans mb-3">{notif.message}</p>
+
+                            <div className="flex flex-wrap justify-between items-center gap-2 border-t border-slate-100 pt-2.5">
+                              <div className="text-[10px] text-slate-455">
+                                <span className="font-semibold text-slate-600">To:</span> <span className="font-mono text-indigo-650 bg-slate-50 px-1 py-0.5 rounded">{notif.recipientEmail}</span>
+                              </div>
+                              <button
+                                onClick={() => setSelectedEmailBody(isSelected ? null : notif)}
+                                className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer flex items-center gap-1"
+                              >
+                                <span>{isSelected ? "Hide Email Payload ✕" : "Inspect SMTP Envelope ✦"}</span>
+                              </button>
+                            </div>
+
+                            {isSelected && (
+                              <div className="mt-3.5 p-3.5 bg-slate-900 text-slate-100 rounded-lg font-mono text-[10px] leading-relaxed border border-slate-800 animate-slide-down">
+                                <div className="border-b border-slate-800 pb-2 mb-2 text-slate-400">
+                                  <div>SMTP_HOST: {notifSettings.smtpHost}:{notifSettings.smtpPort}</div>
+                                  <div>FROM: "{notifSettings.senderName}" &lt;{notifSettings.senderEmail}&gt;</div>
+                                  <div>TO: &lt;{notif.recipientEmail}&gt;</div>
+                                  <div>DATE: {new Date(notif.timestamp).toUTCString()}</div>
+                                  <div>SUBJECT: {notif.title}</div>
+                                  <div>MIME-Version: 1.0 (DKIM-SIGNED, SPF-PASS)</div>
+                                </div>
+                                <div className="text-emerald-400 font-sans p-2 bg-slate-950/60 rounded border border-slate-850 whitespace-pre-line text-[11px]">
+                                  {notif.message}
+                                  
+                                  {"\n\n---\nAutomated screening system generated message. Do not reply directly to this mail."}
+                                </div>
+                                <div className="mt-2.5 text-right text-[9px] text-slate-500">
+                                  Status: <span className="text-emerald-400 font-bold uppercase">250 OK (Message accepted for delivery)</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {notifications.length === 0 && (
+                        <div className="p-10 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-2.5">
+                          <Mail className="w-8 h-8 text-slate-300 mx-auto animate-pulse" />
+                          <p className="text-slate-700 text-xs font-bold">No notifications or emails logged yet.</p>
+                          <p className="text-slate-500 text-[11px] max-w-sm mx-auto">Trigger simulated actions on the right panel or complete real tests to watch notifications pop up here.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column - Rules & Simulators */}
+                <div className="lg:col-span-5 space-y-5">
+                  {/* Automation Rule Book Configuration */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs">
+                    <h3 className="text-xs uppercase font-bold text-slate-500 tracking-wider mb-3 flex items-center gap-1.5">
+                      <Settings className="w-4 h-4 text-indigo-500" />
+                      <span>Alert Routing & SMTP Credentials</span>
+                    </h3>
+
+                    <form onSubmit={handleSaveNotifSettings} className="space-y-4">
+                      <div className="space-y-3 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                        <label className="flex items-center gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={notifSettings.completionAlerts}
+                            onChange={(e) => setNotifSettings({ ...notifSettings, completionAlerts: e.target.checked })}
+                            className="w-3.5 h-3.5 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                          />
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">Assessment Completion Alerts</span>
+                            <span className="text-[10px] text-slate-455 block">Sends email automatically when any candidate submits an assessment</span>
+                          </div>
+                        </label>
+
+                        <label className="flex items-center gap-2.5 cursor-pointer pt-2 border-t border-slate-150">
+                          <input
+                            type="checkbox"
+                            checked={notifSettings.upcomingInterviewAlerts}
+                            onChange={(e) => setNotifSettings({ ...notifSettings, upcomingInterviewAlerts: e.target.checked })}
+                            className="w-3.5 h-3.5 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
+                          />
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">Approaching Interview Reminders</span>
+                            <span className="text-[10px] text-slate-455 block">Toggles alerts for technical interviews scheduled on the workspace</span>
+                          </div>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Reminder Window</label>
+                          <select
+                            value={notifSettings.reminderThresholdHours}
+                            onChange={(e) => setNotifSettings({ ...notifSettings, reminderThresholdHours: Number(e.target.value) })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none text-slate-800"
+                          >
+                            <option value={1}>1 Hour Before</option>
+                            <option value={6}>6 Hours Before</option>
+                            <option value={12}>12 Hours Before</option>
+                            <option value={24}>24 Hours Before</option>
+                            <option value={48}>48 Hours Before</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">SMTP Port</label>
+                          <input
+                            type="number"
+                            value={notifSettings.smtpPort}
+                            onChange={(e) => setNotifSettings({ ...notifSettings, smtpPort: Number(e.target.value) })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-800"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">SMTP Server Gateway</label>
+                        <input
+                          type="text"
+                          required
+                          value={notifSettings.smtpHost}
+                          onChange={(e) => setNotifSettings({ ...notifSettings, smtpHost: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none text-slate-900 font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Recipient Recruiter Emails</label>
+                        <input
+                          type="text"
+                          required
+                          value={notifSettings.recipientEmails}
+                          onChange={(e) => setNotifSettings({ ...notifSettings, recipientEmails: e.target.value })}
+                          placeholder="hiring@saas.com, cc-recruits@saas.com"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs outline-none text-slate-900"
+                        />
+                        <span className="text-[9px] text-slate-400 mt-0.5 block">Separate multiple addresses with commas</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Sender Name</label>
+                          <input
+                            type="text"
+                            required
+                            value={notifSettings.senderName}
+                            onChange={(e) => setNotifSettings({ ...notifSettings, senderName: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-800"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Sender Address</label>
+                          <input
+                            type="email"
+                            required
+                            value={notifSettings.senderEmail}
+                            onChange={(e) => setNotifSettings({ ...notifSettings, senderEmail: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs outline-none text-slate-800 font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={savingSettings}
+                        className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg transition cursor-pointer shadow-xs flex items-center justify-center gap-1.5"
+                      >
+                        {savingSettings ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>Synchronizing SMTP Relay...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Verify & Save SMTP Routing</span>
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Manual Interactive Sandbox Simulator */}
+                  <div className="bg-slate-900 text-slate-150 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <h3 className="text-xs uppercase font-bold text-indigo-400 tracking-wider mb-2 flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-indigo-400" />
+                      <span>SMTP Notification Sandbox Simulator</span>
+                    </h3>
+                    <p className="text-slate-400 text-[11px] mb-4">Interactively trigger instant automated event notifications directly from candidates onto the workspace outbox.</p>
+
+                    <div className="space-y-2.5">
+                      <button
+                        onClick={() => handleSimulateNotification("assessment_completion")}
+                        disabled={simulationLoading !== null}
+                        className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-750 text-slate-100 disabled:text-slate-400 border border-slate-700 hover:border-slate-600 rounded-xl text-left text-xs font-semibold transition cursor-pointer flex justify-between items-center"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-indigo-400 animate-pulse" />
+                          <div>
+                            <span className="block font-bold">Simulate Candidate Completion</span>
+                            <span className="text-[10px] text-slate-400 block font-normal">Fires real-time assessment scores and generates digital certificate</span>
+                          </div>
+                        </div>
+                        {simulationLoading === "assessment_completion" ? (
+                          <RefreshCw className="w-4 h-4 animate-spin text-indigo-400" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-slate-500" />
+                        )}
+                      </button>
+
+                      <button
+                        onClick={() => handleSimulateNotification("upcoming_interview")}
+                        disabled={simulationLoading !== null}
+                        className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-750 text-slate-100 disabled:text-slate-400 border border-slate-700 hover:border-slate-600 rounded-xl text-left text-xs font-semibold transition cursor-pointer flex justify-between items-center"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-amber-400" />
+                          <div>
+                            <span className="block font-bold">Simulate Approaching Interview Reminder</span>
+                            <span className="text-[10px] text-slate-400 block font-normal">Triggers scheduled meeting alert for workspace and candidates</span>
+                          </div>
+                        </div>
+                        {simulationLoading === "upcoming_interview" ? (
+                          <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4 text-slate-500" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}

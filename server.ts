@@ -868,6 +868,58 @@ function generateRobustQuestionBank(): Question[] {
 // Active attempts registry
 let dbAttempts: AssessmentAttempt[] = [];
 
+// Automated notifications & email alerts registry
+interface RecruiterNotification {
+  id: string;
+  type: "assessment_completion" | "upcoming_interview" | "system";
+  title: string;
+  message: string;
+  timestamp: string;
+  recipientEmail: string;
+  candidateName?: string;
+  candidateId?: string;
+  status: "sent" | "failed" | "pending";
+  metadata?: any;
+}
+
+let dbNotifications: RecruiterNotification[] = [
+  {
+    id: "notif-1",
+    type: "assessment_completion",
+    title: "Assessment Completed: Alexander Wright",
+    message: "Alexander Wright has completed the React TypeScript & Frontend Engineering assessment with an overall score of 92%. Digital certificate cert-9210-aw generated.",
+    timestamp: new Date(Date.now() - 3600000 * 4).toISOString(), // 4 hours ago
+    recipientEmail: "recruiter@saas.com",
+    candidateName: "Alexander Wright",
+    candidateId: "usr_alex_02",
+    status: "sent",
+    metadata: { score: 92, category: "React TypeScript & Frontend Engineering" }
+  },
+  {
+    id: "notif-2",
+    type: "upcoming_interview",
+    title: "Upcoming Interview Reminder: Alex Rivera",
+    message: "Your interview with Alex Rivera for Full Stack Development is scheduled to start in less than 24 hours.",
+    timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), // 2 hours ago
+    recipientEmail: "recruiter@saas.com",
+    candidateName: "Alex Rivera",
+    candidateId: "user-candidate-1",
+    status: "sent",
+    metadata: { date: "2026-06-25", time: "10:00" }
+  }
+];
+
+let emailAlertSettings = {
+  completionAlerts: true,
+  upcomingInterviewAlerts: true,
+  reminderThresholdHours: 24,
+  smtpHost: "smtp.saas-screening.com",
+  smtpPort: 587,
+  recipientEmails: "recruiter@saas.com, HR-team@saas-screening.com",
+  senderName: "SaaS TalentScreen Advisor",
+  senderEmail: "advisor@saas-screening.com"
+};
+
 // Certificates registry
 let dbCertificates: DigitalCertificate[] = [
   {
@@ -1462,6 +1514,28 @@ app.post("/api/assessment/complete", (req: Request, res: Response) => {
     }
   }
 
+  // Trigger automated email alert if enabled in settings
+  if (emailAlertSettings.completionAlerts) {
+    const emailNotif: RecruiterNotification = {
+      id: `notif-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      type: "assessment_completion",
+      title: `Assessment Completed: ${attempt.candidateName}`,
+      message: `${attempt.candidateName} has completed the ${attempt.category} assessment with an overall score of ${attempt.overallCandidateScore}% (${attempt.skillRatingLevel}). Digital certification ${attempt.certificateId || "N/A"} was generated.`,
+      timestamp: new Date().toISOString(),
+      recipientEmail: emailAlertSettings.recipientEmails.split(",")[0]?.trim() || "recruiter@saas.com",
+      candidateName: attempt.candidateName,
+      candidateId: attempt.candidateId,
+      status: "sent",
+      metadata: {
+        attemptId: attempt.id,
+        score: attempt.overallCandidateScore,
+        category: attempt.category,
+        certificateId: attempt.certificateId
+      }
+    };
+    dbNotifications.unshift(emailNotif);
+  }
+
   res.json({
     attempt,
     certificate
@@ -1702,6 +1776,159 @@ Ensure you provide exactly 2-3 strengths, exactly 2-3 weaknesses, a summary, and
   };
 
   return res.json({ success: true, analysis: localAnalysis, fallback: true });
+});
+
+// ============================================================================
+// AUTOMATED NOTIFICATION & EMAIL ALERT SYSTEM (SMTP SIMULATOR)
+// ============================================================================
+app.get("/api/recruiter/notifications", (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    notifications: dbNotifications,
+    settings: emailAlertSettings
+  });
+});
+
+app.post("/api/recruiter/notifications/settings", (req: Request, res: Response) => {
+  const { 
+    completionAlerts, 
+    upcomingInterviewAlerts, 
+    reminderThresholdHours, 
+    smtpHost, 
+    smtpPort, 
+    recipientEmails,
+    senderName,
+    senderEmail
+  } = req.body;
+
+  emailAlertSettings = {
+    completionAlerts: !!completionAlerts,
+    upcomingInterviewAlerts: !!upcomingInterviewAlerts,
+    reminderThresholdHours: Number(reminderThresholdHours) || 24,
+    smtpHost: String(smtpHost || emailAlertSettings.smtpHost),
+    smtpPort: Number(smtpPort) || 587,
+    recipientEmails: String(recipientEmails || emailAlertSettings.recipientEmails),
+    senderName: String(senderName || emailAlertSettings.senderName),
+    senderEmail: String(senderEmail || emailAlertSettings.senderEmail)
+  };
+
+  res.json({
+    success: true,
+    message: "Automated alert configurations successfully synchronized with SMTP relay servers.",
+    settings: emailAlertSettings
+  });
+});
+
+app.post("/api/recruiter/notifications/simulate", (req: Request, res: Response) => {
+  const { type } = req.body;
+  let notif: RecruiterNotification;
+
+  if (type === "assessment_completion") {
+    const names = ["Sarah Connor", "John Doe", "Bruce Wayne", "Clark Kent", "Diana Prince", "Alex Rivera"];
+    const skills = ["React & Frontend Engineering", "Go Cloud Backend Microservices", "Python & Machine Learning", "Kubernetes SRE Systems"];
+    const name = names[Math.floor(Math.random() * names.length)];
+    const skill = skills[Math.floor(Math.random() * skills.length)];
+    const score = Math.floor(72 + Math.random() * 26);
+    
+    notif = {
+      id: `notif-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      type: "assessment_completion",
+      title: `Assessment Completed: ${name}`,
+      message: `${name} has completed the ${skill} assessment with an overall score of ${score}%. Digital certificate cert-${Math.floor(1000 + Math.random() * 9000)} was generated.`,
+      timestamp: new Date().toISOString(),
+      recipientEmail: emailAlertSettings.recipientEmails.split(",")[0]?.trim() || "recruiter@saas.com",
+      candidateName: name,
+      status: "sent",
+      metadata: { score, category: skill }
+    };
+  } else {
+    const names = ["Peter Parker", "Tony Stark", "Steve Rogers", "Natasha Romanoff", "Alex Rivera"];
+    const times = ["14:30", "09:00", "11:15", "16:00"];
+    const name = names[Math.floor(Math.random() * names.length)];
+    const time = times[Math.floor(Math.random() * times.length)];
+    
+    notif = {
+      id: `notif-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+      type: "upcoming_interview",
+      title: `Upcoming Interview Reminder: ${name}`,
+      message: `Your technical interview with ${name} is approaching. It is scheduled to start at ${time} today on Google Meet.`,
+      timestamp: new Date().toISOString(),
+      recipientEmail: emailAlertSettings.recipientEmails.split(",")[0]?.trim() || "recruiter@saas.com",
+      candidateName: name,
+      status: "sent",
+      metadata: { time }
+    };
+  }
+
+  dbNotifications.unshift(notif);
+  res.json({ success: true, notification: notif, notifications: dbNotifications });
+});
+
+app.post("/api/recruiter/notifications/check-interviews", (req: Request, res: Response) => {
+  const { interviews } = req.body;
+  if (!Array.isArray(interviews)) {
+    return res.status(400).json({ error: "Invalid interviews array structure." });
+  }
+
+  if (!emailAlertSettings.upcomingInterviewAlerts) {
+    return res.json({ success: true, count: 0, message: "Upcoming interview alerts are currently disabled.", notifications: dbNotifications });
+  }
+
+  const thresholdMs = emailAlertSettings.reminderThresholdHours * 3600 * 1000;
+  const now = new Date();
+  let alertedCount = 0;
+
+  interviews.forEach((int: any) => {
+    if (!int.date || !int.time) return;
+    try {
+      const interviewDateTime = new Date(`${int.date}T${int.time}`);
+      const timeDiff = interviewDateTime.getTime() - now.getTime();
+
+      // If within threshold and in the future
+      if (timeDiff > 0 && timeDiff <= thresholdMs) {
+        // Check if we already have an alert for this interview ID
+        const alreadyAlerted = dbNotifications.some(
+          notif => notif.type === "upcoming_interview" && notif.metadata?.interviewId === int.id
+        );
+
+        if (!alreadyAlerted) {
+          const notif: RecruiterNotification = {
+            id: `notif-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+            type: "upcoming_interview",
+            title: `Upcoming Interview Reminder: ${int.candidateName}`,
+            message: `Your technical interview with ${int.candidateName} for ${int.technologyArea || "Technical Role"} starts at ${int.time} on ${int.date} (${Math.round(timeDiff / 60000)} minutes remaining).`,
+            timestamp: now.toISOString(),
+            recipientEmail: int.candidateEmail || emailAlertSettings.recipientEmails.split(",")[0]?.trim() || "recruiter@saas.com",
+            candidateName: int.candidateName,
+            candidateId: int.candidateId,
+            status: "sent",
+            metadata: {
+              interviewId: int.id,
+              date: int.date,
+              time: int.time,
+              meetingLink: int.meetingLink
+            }
+          };
+          dbNotifications.unshift(notif);
+          alertedCount++;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to parse interview date/time for automated alerts:", e);
+    }
+  });
+
+  res.json({ 
+    success: true, 
+    count: alertedCount, 
+    notifications: dbNotifications, 
+    settings: emailAlertSettings 
+  });
+});
+
+app.post("/api/recruiter/notifications/clear", (req: Request, res: Response) => {
+  dbNotifications = [];
+  res.json({ success: true, message: "All email notification logs successfully cleared." });
 });
 
 // 8. CANDIDATE REPOSITORY & ADVANCED SEARCH (Module 10, 11)
