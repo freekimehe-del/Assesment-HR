@@ -30,10 +30,12 @@ import {
   Check,
   ExternalLink,
   Twitter,
-  Brain
+  Brain,
+  Trophy
 } from "lucide-react";
 import StrengthsWeaknessesModal from "./StrengthsWeaknessesModal";
 import MockInterviewModal from "./MockInterviewModal";
+import GlobalLeaderboard from "./GlobalLeaderboard";
 
 interface CandidateDashboardProps {
   user: UserProfile;
@@ -44,7 +46,7 @@ interface CandidateDashboardProps {
 }
 
 export default function CandidateDashboard(props: CandidateDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"profile" | "history" | "launch" | "gdpr">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "history" | "launch" | "gdpr" | "leaderboard">("profile");
   const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
   const [certs, setCerts] = useState<DigitalCertificate[]>([]);
   const [loading, setLoading] = useState(false);
@@ -290,6 +292,7 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
               { id: "profile", label: "Professional Profile", icon: User },
               { id: "launch", label: "Launch Screening", icon: Zap },
               { id: "history", label: "Assessment Records", icon: History },
+              { id: "leaderboard", label: "Global Leaderboard", icon: Trophy },
               { id: "gdpr", label: "GDPR Privacy Console", icon: ShieldAlert }
             ].map((tab) => {
               const Icon = tab.icon;
@@ -1367,6 +1370,16 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* GLOBAL LEADERBOARD TAB */}
+          {activeTab === "leaderboard" && (
+            <div className="space-y-4 animate-fade-in" id="leaderboard-tab">
+              <GlobalLeaderboard 
+                user={props.user} 
+                onLaunchAssessment={() => setActiveTab("launch")} 
+              />
             </div>
           )}
 

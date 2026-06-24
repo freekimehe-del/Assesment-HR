@@ -2299,6 +2299,113 @@ It was a pleasure discussing engineering with you today. Best of luck!`;
   });
 });
 
+// ==========================================
+// GLOBAL LEADERBOARD API (Module 16)
+// ==========================================
+app.get("/api/assessment/leaderboard", (req: Request, res: Response) => {
+  const currentCandidateId = req.query.candidateId as string;
+
+  const baseBenchmarks = [
+    { id: "bench-1", fullName: "Sarah Chen", location: "New York, NY", score: 96, category: "React & Frontend", avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150", isBenchmark: true },
+    { id: "bench-2", fullName: "Elena Rostova", location: "Berlin, DE", score: 94, category: "System Design", avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150", isBenchmark: true },
+    { id: "bench-3", fullName: "Yusuf Demir", location: "Istanbul, TR", score: 91, category: "Python Backend", avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150", isBenchmark: true },
+    { id: "bench-4", fullName: "Li Wei", location: "Singapore, SG", score: 89, category: "Go & Kubernetes", avatarUrl: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150", isBenchmark: true },
+    { id: "bench-5", fullName: "Amara Diallo", location: "Paris, FR", score: 82, category: "DevOps & Infrastructure", avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150", isBenchmark: true },
+    { id: "bench-6", fullName: "Devon Miller", location: "London, UK", score: 78, category: "Fullstack Engineering", avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150", isBenchmark: true },
+    { id: "bench-7", fullName: "Yuki Tanaka", location: "Tokyo, JP", score: 74, category: "Cloud Architecture", avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150", isBenchmark: true },
+    { id: "bench-8", fullName: "Carlos Mendez", location: "Madrid, ES", score: 68, category: "Database Systems", avatarUrl: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150", isBenchmark: true },
+  ];
+
+  // Map real candidates
+  const candidates = dbUsers.filter(u => u.role === UserRole.CANDIDATE);
+  const realCandidates = candidates.map(c => {
+    const attempts = dbAttempts.filter(a => a.candidateId === c.id && a.status === "completed");
+    
+    let highestScore = 0;
+    let preferredCategory = c.currentRole || "Software Engineering";
+    
+    if (attempts.length > 0) {
+      highestScore = Math.max(...attempts.map(a => a.overallCandidateScore || 0));
+      preferredCategory = attempts[0].category;
+    } else if (c.id === "user-candidate-1") {
+      highestScore = 85; // Alex Rivera default preset
+      preferredCategory = "React & Frontend";
+    }
+
+    return {
+      id: c.id,
+      fullName: c.fullName,
+      location: c.location || "Remote",
+      score: highestScore,
+      category: preferredCategory,
+      avatarUrl: c.avatarUrl || "",
+      isBenchmark: false
+    };
+  });
+
+  const filteredBenchmarks = baseBenchmarks.filter(b => !realCandidates.some(rc => rc.fullName.toLowerCase() === b.fullName.toLowerCase()));
+  const allEntries = [...realCandidates, ...filteredBenchmarks];
+
+  allEntries.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return a.fullName.localeCompare(b.fullName);
+  });
+
+  const rankedEntries = allEntries.map((entry, index) => ({
+    ...entry,
+    rank: index + 1
+  }));
+
+  const myEntry = rankedEntries.find(r => r.id === currentCandidateId);
+  
+  let percentile = 0;
+  let myRank = 0;
+  let myScore = 0;
+
+  if (myEntry) {
+    myRank = myEntry.rank;
+    myScore = myEntry.score;
+    const scoredLower = rankedEntries.filter(r => r.score < myScore).length;
+    if (myScore > 0) {
+      percentile = Math.round((scoredLower / rankedEntries.length) * 100);
+      if (percentile === 100) percentile = 99;
+      if (percentile === 0 && myScore > 0) percentile = 15;
+    }
+  } else {
+    percentile = 0;
+  }
+
+  const ranges = [
+    { range: "50-60", count: 2, label: "50-60" },
+    { range: "61-70", count: 4, label: "61-70" },
+    { range: "71-80", count: 7, label: "71-80" },
+    { range: "81-90", count: 12, label: "81-90" },
+    { range: "91-100", count: 5, label: "91-100" }
+  ];
+
+  rankedEntries.forEach(entry => {
+    const s = entry.score;
+    if (s >= 50 && s <= 60) ranges[0].count++;
+    else if (s >= 61 && s <= 70) ranges[1].count++;
+    else if (s >= 71 && s <= 80) ranges[2].count++;
+    else if (s >= 81 && s <= 90) ranges[3].count++;
+    else if (s >= 91 && s <= 100) ranges[4].count++;
+  });
+
+  res.json({
+    leaderboard: rankedEntries,
+    myStats: {
+      rank: myRank,
+      score: myScore,
+      percentile: percentile,
+      totalCompetitors: rankedEntries.length
+    },
+    distribution: ranges
+  });
+});
+
 // Support fallback endpoints to clear history / reset
 app.post("/api/admin/reset", (req: Request, res: Response) => {
   dbUsers = [...DEFAULT_USERS];
