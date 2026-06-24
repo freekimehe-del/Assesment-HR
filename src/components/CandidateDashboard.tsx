@@ -24,8 +24,15 @@ import {
   Download,
   Activity,
   LogOut,
-  Sparkles
+  Sparkles,
+  Share2,
+  Copy,
+  Check,
+  ExternalLink,
+  Twitter,
+  Brain
 } from "lucide-react";
+import StrengthsWeaknessesModal from "./StrengthsWeaknessesModal";
 
 interface CandidateDashboardProps {
   user: UserProfile;
@@ -42,6 +49,10 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // AI Strengths & Weaknesses Modal States
+  const [selectedAnalysisAttemptId, setSelectedAnalysisAttemptId] = useState<string | null>(null);
+  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
+
   // Profile Form States
   const [fullName, setFullName] = useState(props.user.fullName || "");
   const [location, setLocation] = useState(props.user.location || "");
@@ -53,6 +64,21 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
   const [skills, setSkills] = useState<string[]>(props.user.skills || []);
   const [newSkill, setNewSkill] = useState("");
   const [mfaEnabled, setMfaEnabled] = useState(props.user.mfaEnabled || false);
+
+  // Share Achievements States
+  const [selectedCertId, setSelectedCertId] = useState<string>("");
+  const [shareTemplate, setShareTemplate] = useState<"linkedin" | "twitter" | "minimal" | "personal">("linkedin");
+  const [copiedText, setCopiedText] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [includeScore, setIncludeScore] = useState(true);
+  const [includeIntegrity, setIncludeIntegrity] = useState(true);
+  const [customHashtags, setCustomHashtags] = useState("#TechScreen #Certified #CompetencyHub");
+
+  useEffect(() => {
+    if (certs.length > 0 && !selectedCertId) {
+      setSelectedCertId(certs[0].id);
+    }
+  }, [certs, selectedCertId]);
 
   // Employment History Sub-form
   const [employmentHistory, setEmploymentHistory] = useState(props.user.employmentHistory || []);
@@ -164,6 +190,39 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+  };
+
+  const selectedCert = certs.find(c => c.id === selectedCertId);
+
+  const generateShareContent = () => {
+    if (!selectedCert) return "";
+    
+    const certUrl = `https://techscreen.io/verify/${selectedCert.verificationHash}`;
+    const techName = selectedCert.technologyArea;
+    const scoreText = includeScore ? ` with a verified score of ${selectedCert.score}%` : "";
+    
+    const att = attempts.find(a => a.certificateId === selectedCert.id);
+    const integrityText = includeIntegrity && att ? ` (Proctored integrity score: ${att.integrityScore}%)` : "";
+    const ratingLevel = att?.skillRatingLevel ? ` [${att.skillRatingLevel} Level]` : "";
+
+    const hashtags = customHashtags ? `\n\n${customHashtags}` : "";
+
+    switch (shareTemplate) {
+      case "linkedin":
+        return `I am proud to share that I have officially certified my expertise in ${techName}${ratingLevel}${scoreText} on TechScreen! 🏆\n\nThe evaluation proctoring validated high technical competency standards${integrityText}.\n\nCheck out my digital credential here: ${certUrl}${hashtags}`;
+      
+      case "twitter":
+        return `Just passed the TechScreen technical competency assessment for ${techName}${scoreText}! 💻\n\nIntegrity proctored & verified.${integrityText}\nVerify: ${certUrl}${hashtags}`;
+      
+      case "minimal":
+        return `🏆 TechScreen Certified: ${techName} (${selectedCert.score}% Score)\n🔗 Credential Link: ${certUrl}\nVerification Hash: ${selectedCert.verificationHash}`;
+      
+      case "personal":
+        return `Super excited to announce that I've received my TechScreen Professional Certification in ${techName}! Score: ${selectedCert.score}%. Feels great to have hard work verified! ✨ ${certUrl}`;
+      
+      default:
+        return "";
+    }
   };
 
   return (
@@ -614,14 +673,30 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                         <p className="text-[10px] text-slate-500 font-mono">Issued: {cert.assessmentDate} • Hash: {cert.verificationHash.substr(0, 8)}</p>
                       </div>
 
-                      <button
-                        onClick={() => props.onViewCertificate(cert.id)}
-                        className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer relative z-10 shadow-xs"
-                        id={`view-cert-btn-${cert.id}`}
-                      >
-                        <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Inspect</span>
-                      </button>
+                      <div className="flex items-center gap-2 relative z-10">
+                        <button
+                          onClick={() => {
+                            setSelectedCertId(cert.id);
+                            setTimeout(() => {
+                              document.getElementById("share-achievement-console")?.scrollIntoView({ behavior: "smooth" });
+                            }, 50);
+                          }}
+                          className={`px-2.5 py-1.5 border text-xs font-semibold rounded-lg transition flex items-center gap-1 cursor-pointer shadow-xs ${selectedCertId === cert.id ? "bg-indigo-50 border-indigo-200 text-indigo-700 font-bold" : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"}`}
+                          id={`select-share-btn-${cert.id}`}
+                        >
+                          <Share2 className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>{selectedCertId === cert.id ? "Active Share" : "Share"}</span>
+                        </button>
+
+                        <button
+                          onClick={() => props.onViewCertificate(cert.id)}
+                          className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shadow-xs"
+                          id={`view-cert-btn-${cert.id}`}
+                        >
+                          <FileCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Inspect</span>
+                        </button>
+                      </div>
                     </div>
                   ))}
 
@@ -634,6 +709,330 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                   )}
                 </div>
               </div>
+
+              {/* Share Achievements Console Section */}
+              {certs.length > 0 && (
+                <div 
+                  className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4" 
+                  id="share-achievement-console"
+                >
+                  <div className="border-b border-slate-150 pb-3 flex justify-between items-center">
+                    <div>
+                      <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <Share2 className="text-indigo-600 w-4.5 h-4.5" />
+                        <span>Share Achievement Console</span>
+                      </h2>
+                      <p className="text-slate-500 text-xs mt-0.5">
+                        Broadcast your verified competencies directly to professional networks.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    
+                    {/* Left Pane: Customization Parameters */}
+                    <div className="lg:col-span-7 space-y-4">
+                      
+                      {/* 1. Certification selector dropdown */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Select Credential to Share
+                        </label>
+                        <select
+                          value={selectedCertId}
+                          onChange={(e) => setSelectedCertId(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 rounded-lg px-3 py-2 text-xs text-slate-900 outline-none transition font-medium"
+                          id="share-cert-dropdown"
+                        >
+                          {certs.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.technologyArea} (Score: {c.score}% • {c.assessmentDate})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* 2. Style Preset selector tabs */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Sharing Style & Platform Preset
+                        </label>
+                        <div className="grid grid-cols-4 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                          {[
+                            { id: "linkedin", label: "LinkedIn" },
+                            { id: "twitter", label: "X / Twitter" },
+                            { id: "minimal", label: "Minimal" },
+                            { id: "personal", label: "Personal" }
+                          ].map((t) => (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => setShareTemplate(t.id as any)}
+                              className={`py-1 rounded-md text-[10px] font-bold transition cursor-pointer text-center ${shareTemplate === t.id ? "bg-white text-indigo-700 shadow-xs" : "text-slate-500 hover:text-slate-800"}`}
+                              id={`share-style-tab-${t.id}`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 3. Interactive Customization Switches */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-650 font-medium">Include Score</span>
+                          <button
+                            type="button"
+                            onClick={() => setIncludeScore(!includeScore)}
+                            className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 focus:outline-none ${includeScore ? "bg-indigo-600" : "bg-slate-300"}`}
+                          >
+                            <div className={`w-4 h-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${includeScore ? "translate-x-4" : "translate-x-0"}`} />
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-650 font-medium">Include Proctor Integrity</span>
+                          <button
+                            type="button"
+                            onClick={() => setIncludeIntegrity(!includeIntegrity)}
+                            className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-200 focus:outline-none ${includeIntegrity ? "bg-indigo-600" : "bg-slate-300"}`}
+                          >
+                            <div className={`w-4 h-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${includeIntegrity ? "translate-x-4" : "translate-x-0"}`} />
+                          </button>
+                        </div>
+
+                        <div className="col-span-1 sm:col-span-2 space-y-1 pt-1.5 border-t border-slate-200/65">
+                          <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Custom Post Hashtags
+                          </label>
+                          <input
+                            type="text"
+                            value={customHashtags}
+                            onChange={(e) => setCustomHashtags(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 font-mono outline-none"
+                            placeholder="e.g. #Certified #ReactJS"
+                          />
+                        </div>
+                      </div>
+
+                      {/* 4. Generated Textarea & Copy Actions */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                            Generated Post Snippet Text
+                          </label>
+                          <span className="text-[10px] text-slate-400 font-mono font-medium">
+                            {generateShareContent().length} characters
+                          </span>
+                        </div>
+                        <textarea
+                          readOnly
+                          value={generateShareContent()}
+                          rows={5}
+                          className="w-full bg-slate-950/5 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 font-mono focus:ring-1 focus:ring-indigo-500 outline-none leading-relaxed select-all"
+                          id="generated-post-textarea"
+                        />
+
+                        {/* Button Action Rows */}
+                        <div className="flex flex-wrap gap-2.5 pt-1.5">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(generateShareContent());
+                                setCopiedText(true);
+                                setTimeout(() => setCopiedText(false), 2000);
+                              } catch (err) {
+                                console.error("Clipboard copy failed:", err);
+                              }
+                            }}
+                            className={`px-4 py-2 text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-xs ${copiedText ? "bg-emerald-600 text-white animate-pulse" : "bg-indigo-600 hover:bg-indigo-700 text-white"}`}
+                            id="copy-snippet-btn"
+                          >
+                            {copiedText ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Copied Snippet!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                <span>Copy Post Text</span>
+                              </>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!selectedCert) return;
+                              const certUrl = `https://techscreen.io/verify/${selectedCert.verificationHash}`;
+                              try {
+                                await navigator.clipboard.writeText(certUrl);
+                                setCopiedLink(true);
+                                setTimeout(() => setCopiedLink(false), 2000);
+                              } catch (err) {
+                                console.error("Clipboard copy failed:", err);
+                              }
+                            }}
+                            className={`px-3.5 py-2 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition cursor-pointer ${copiedLink ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"}`}
+                            id="copy-link-btn"
+                          >
+                            {copiedLink ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Link Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                                <span>Copy Verify Link</span>
+                              </>
+                            )}
+                          </button>
+
+                          {/* Quick Share Launch Intents */}
+                          {selectedCert && (
+                            <>
+                              <a
+                                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(generateShareContent())}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 bg-[#1DA1F2] hover:bg-[#1a91da] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition"
+                                id="share-twitter-direct-btn"
+                              >
+                                <Twitter className="w-3.5 h-3.5" />
+                                <span>Post on X</span>
+                              </a>
+                              
+                              <a
+                                href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`https://techscreen.io/verify/${selectedCert.verificationHash}`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 bg-[#0A66C2] hover:bg-[#0957a5] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-xs transition"
+                                id="share-linkedin-direct-btn"
+                              >
+                                <Linkedin className="w-3.5 h-3.5" />
+                                <span>Share LinkedIn</span>
+                              </a>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                    </div>
+
+                    {/* Right Pane: Premium Interactive Live Mockup Feed Post Card */}
+                    <div className="lg:col-span-5 flex flex-col justify-start space-y-3">
+                      <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        Social Feed Live Preview
+                      </span>
+
+                      {/* Mock Social Feed Post */}
+                      {selectedCert && (
+                        <div className="border border-slate-200 bg-white rounded-2xl p-4 shadow-sm text-left relative overflow-hidden" id="mock-social-post-card">
+                          
+                          {/* Feed Header */}
+                          <div className="flex items-start gap-2.5 mb-3">
+                            <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 font-bold uppercase text-xs overflow-hidden flex-shrink-0">
+                              {props.user.avatarUrl ? (
+                                <img src={props.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                props.user.fullName ? props.user.fullName[0] : "U"
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-grow">
+                              <span className="font-bold text-xs text-slate-900 block truncate leading-tight">
+                                {props.user.fullName}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block font-mono truncate">
+                                @{props.user.fullName ? props.user.fullName.replace(/\s+/g, "").toLowerCase() : "user"} • Just now
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Post snippet preview excerpt */}
+                          <p className="text-[11px] text-slate-800 leading-relaxed mb-3 line-clamp-3 select-none whitespace-pre-line">
+                            {generateShareContent().split("\n\n")[0]}
+                          </p>
+
+                          {/* Premium Holographic/Glowing Digital Badge Mockup */}
+                          <div className="w-full bg-slate-950 rounded-xl overflow-hidden relative border border-slate-800 p-4 flex flex-col justify-between h-44 text-white shadow-md" id="share-hologram-badge">
+                            
+                            {/* Decorative background gradients */}
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(99,102,241,0.2)_0%,rgba(16,185,129,0.03)_60%,transparent_100%)] pointer-events-none"></div>
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/[0.04] rounded-full blur-2xl"></div>
+                            <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:1rem_1rem]"></div>
+
+                            {/* Badge Header Info */}
+                            <div className="flex justify-between items-start relative z-10">
+                              <div className="flex items-center gap-1.5">
+                                <div className="p-1 bg-indigo-600/20 border border-indigo-500/20 rounded-md text-indigo-400">
+                                  <Award className="w-3.5 h-3.5" />
+                                </div>
+                                <div>
+                                  <span className="text-[8px] font-mono tracking-widest text-indigo-400 uppercase font-bold block leading-none">
+                                    TechScreen Certified
+                                  </span>
+                                  <span className="text-[7px] font-mono text-slate-400 block tracking-wider mt-0.5">
+                                    PUBLIC TRUST REGISTRY
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              <div className="text-[9px] font-mono bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                                {selectedCert.score}%
+                              </div>
+                            </div>
+
+                            {/* Tech Area Display */}
+                            <div className="space-y-0.5 my-2 relative z-10">
+                              <h4 className="text-xs sm:text-sm font-extrabold tracking-tight text-white font-sans truncate">
+                                {selectedCert.technologyArea}
+                              </h4>
+                              <p className="text-[8px] text-slate-400 font-mono truncate uppercase">
+                                VERIFIED PROFESSIONAL COMPETENT
+                              </p>
+                            </div>
+
+                            {/* Metadata stamp footer of hologram */}
+                            <div className="flex justify-between items-end border-t border-slate-900 pt-2 relative z-10">
+                              <div>
+                                <span className="text-[8px] text-slate-500 block leading-none font-mono">CANDIDATE:</span>
+                                <span className="text-[9px] font-bold text-slate-300 font-sans block truncate max-w-[120px]">{props.user.fullName}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[8px] text-slate-500 block leading-none font-mono">VERIFICATION:</span>
+                                <span className="text-[9px] font-mono font-bold text-slate-400 block tracking-wider">
+                                  {selectedCert.verificationHash.substr(0, 10).toUpperCase()}
+                                </span>
+                              </div>
+                            </div>
+
+                          </div>
+
+                          {/* Post Card Footer */}
+                          <div className="mt-2 text-[9px] text-slate-400 font-mono flex items-center justify-between border-t border-slate-100 pt-2">
+                            <span>🔗 techscreen.io/verify/...</span>
+                            <span className="flex items-center gap-1 text-indigo-600 font-bold">
+                              <span>VERIFIED SECURE CERTIFICATE</span>
+                              <FileCheck className="w-3 h-3" />
+                            </span>
+                          </div>
+
+                        </div>
+                      )}
+
+                      <span className="text-[10px] text-slate-400 text-center leading-relaxed">
+                        *Post link connects viewers back to the secure public registry, showcasing your actual assessment telemetry and verified proctor history.
+                      </span>
+
+                    </div>
+
+                  </div>
+
+                </div>
+              )}
 
               {/* Assessment attempts list */}
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="attempts-history-panel">
@@ -681,6 +1080,17 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                                 }`}>
                                   {att.skillRatingLevel}
                                 </span>
+                                <button
+                                  onClick={() => {
+                                    setSelectedAnalysisAttemptId(att.id);
+                                    setIsAnalysisModalOpen(true);
+                                  }}
+                                  className="mt-1 flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+                                  title="View AI Advisor Strengths & Weaknesses analysis report"
+                                >
+                                  <Sparkles className="w-3 h-3 text-indigo-500 animate-pulse" />
+                                  <span>AI Analysis</span>
+                                </button>
                               </div>
                             ) : (
                               <span className="text-slate-400 font-semibold italic capitalize">{att.status}</span>
@@ -709,6 +1119,177 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                   </table>
                 </div>
               </div>
+
+              {/* Share Achievement Console */}
+              {certs.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4" id="share-achievement-console">
+                  <div className="border-b border-slate-150 pb-3">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Share2 className="text-indigo-600 w-4.5 h-4.5" />
+                      <span>Share Verified Achievement</span>
+                    </h3>
+                    <p className="text-slate-500 text-xs mt-0.5">Generate customized snippets or secure verification links optimized for your professional profiles.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                    {/* Left panel: Config */}
+                    <div className="lg:col-span-5 space-y-4">
+                      {/* Select Cert */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Select Certification</label>
+                        <select
+                          value={selectedCertId}
+                          onChange={(e) => setSelectedCertId(e.target.value)}
+                          className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 transition"
+                        >
+                          {certs.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.technologyArea} (Score: {c.score}%)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Snippet Template Style */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Template Style</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { id: "linkedin", label: "LinkedIn Post" },
+                            { id: "twitter", label: "Twitter / X" },
+                            { id: "minimal", label: "Minimal Tag" },
+                            { id: "personal", label: "Personal Bio" }
+                          ].map((tmpl) => (
+                            <button
+                              type="button"
+                              key={tmpl.id}
+                              onClick={() => setShareTemplate(tmpl.id as any)}
+                              className={`py-1.5 px-2 border text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${shareTemplate === tmpl.id ? "border-indigo-600 bg-indigo-50/50 text-indigo-700 font-bold" : "border-slate-200 bg-slate-50 text-slate-500 hover:text-slate-800"}`}
+                            >
+                              {tmpl.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Config Options */}
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Metrics Inclusions</label>
+                        <div className="flex flex-col gap-2">
+                          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={includeScore}
+                              onChange={(e) => setIncludeScore(e.target.checked)}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Include Assessment Score</span>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={includeIntegrity}
+                              onChange={(e) => setIncludeIntegrity(e.target.checked)}
+                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span>Include Security Integrity badge</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Hashtags Input */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Custom Hashtags</label>
+                        <input
+                          type="text"
+                          value={customHashtags}
+                          onChange={(e) => setCustomHashtags(e.target.value)}
+                          className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-850 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Right panel: Live Preview & Copier */}
+                    <div className="lg:col-span-7 flex flex-col justify-between p-4 bg-slate-950 border border-slate-900 rounded-xl space-y-3 font-sans text-slate-300">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-slate-900 pb-2 mb-2">
+                          <span className="text-[10px] text-slate-500 font-bold font-mono uppercase tracking-wider">Live snippet preview</span>
+                          <span className="text-[9px] text-indigo-400 bg-indigo-950/40 border border-indigo-900/60 px-2 py-0.5 rounded uppercase font-semibold">Ready to share</span>
+                        </div>
+
+                        <div className="bg-slate-900/40 p-3 rounded-lg border border-slate-900 font-mono text-[11px] text-slate-300 leading-relaxed whitespace-pre-wrap select-all">
+                          {(() => {
+                            const selectedCert = certs.find((c) => c.id === selectedCertId) || certs[0];
+                            if (!selectedCert) return "Select a certificate to generate snippet.";
+                            
+                            const scoreStr = includeScore ? ` with an outstanding score of ${selectedCert.score}%` : "";
+                            const integrityStr = includeIntegrity ? ` Verified with high anti-cheat proctoring integrity.` : "";
+                            const verificationLink = `${window.location.origin}/verify/${selectedCert.id}`;
+
+                            if (shareTemplate === "linkedin") {
+                              return `🚀 Excited to share that I have officially certified in ${selectedCert.technologyArea}${scoreStr}! This verified credential certifies my advanced technical capabilities.${integrityStr}\n\n🔗 View dynamic proof of certification & code breakdown here: ${verificationLink}\n\n${customHashtags}`;
+                            } else if (shareTemplate === "twitter") {
+                              return `Just certified in ${selectedCert.technologyArea}${scoreStr} on TechScreen SaaS! Verified competency certificate: ${verificationLink} ${customHashtags}`;
+                            } else if (shareTemplate === "minimal") {
+                              return `Certified: ${selectedCert.technologyArea} (${selectedCert.score}%) | Verification Hash: ${selectedCert.verificationHash.substr(0, 16)}... | Verify: ${verificationLink}`;
+                            } else {
+                              return `Verified Software Engineer | Certified in ${selectedCert.technologyArea}${scoreStr} | Registry Verification link: ${verificationLink}`;
+                            }
+                          })()}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-900">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selectedCert = certs.find((c) => c.id === selectedCertId) || certs[0];
+                            if (!selectedCert) return;
+                            const scoreStr = includeScore ? ` with an outstanding score of ${selectedCert.score}%` : "";
+                            const integrityStr = includeIntegrity ? ` Verified with high anti-cheat proctoring integrity.` : "";
+                            const verificationLink = `${window.location.origin}/verify/${selectedCert.id}`;
+                            let txt = "";
+                            if (shareTemplate === "linkedin") {
+                              txt = `🚀 Excited to share that I have officially certified in ${selectedCert.technologyArea}${scoreStr}! This verified credential certifies my advanced technical capabilities.${integrityStr}\n\n🔗 View dynamic proof of certification & code breakdown here: ${verificationLink}\n\n${customHashtags}`;
+                            } else if (shareTemplate === "twitter") {
+                              txt = `Just certified in ${selectedCert.technologyArea}${scoreStr} on TechScreen SaaS! Verified competency certificate: ${verificationLink} ${customHashtags}`;
+                            } else if (shareTemplate === "minimal") {
+                              txt = `Certified: ${selectedCert.technologyArea} (${selectedCert.score}%) | Verification Hash: ${selectedCert.verificationHash.substr(0, 16)}... | Verify: ${verificationLink}`;
+                            } else {
+                              txt = `Verified Software Engineer | Certified in ${selectedCert.technologyArea}${scoreStr} | Registry Verification link: ${verificationLink}`;
+                            }
+                            navigator.clipboard.writeText(txt);
+                            setCopiedText(true);
+                            setTimeout(() => setCopiedText(false), 2000);
+                          }}
+                          className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer transition shadow-sm"
+                        >
+                          {copiedText ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5 text-indigo-200" />}
+                          <span>{copiedText ? "Snippet Copied!" : "Copy Snippet"}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const selectedCert = certs.find((c) => c.id === selectedCertId) || certs[0];
+                            if (!selectedCert) return;
+                            const verificationLink = `${window.location.origin}/verify/${selectedCert.id}`;
+                            navigator.clipboard.writeText(verificationLink);
+                            setCopiedLink(true);
+                            setTimeout(() => setCopiedLink(false), 2000);
+                          }}
+                          className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 border border-slate-800 cursor-pointer transition"
+                        >
+                          {copiedLink ? <Check className="w-3.5 h-3.5 text-white" /> : <ExternalLink className="w-3.5 h-3.5 text-slate-400" />}
+                          <span>{copiedLink ? "Link Copied!" : "Copy Verification Link"}</span>
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
 
@@ -770,6 +1351,12 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
 
         </main>
       </div>
+
+      <StrengthsWeaknessesModal
+        isOpen={isAnalysisModalOpen}
+        onClose={() => setIsAnalysisModalOpen(false)}
+        attemptId={selectedAnalysisAttemptId}
+      />
     </div>
   );
 }

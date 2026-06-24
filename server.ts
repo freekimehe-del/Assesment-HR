@@ -1468,6 +1468,242 @@ app.post("/api/assessment/complete", (req: Request, res: Response) => {
   });
 });
 
+// ============================================================================
+// POST-ASSESSMENT AI 'STRENGTHS & WEAKNESSES' ENGINE (AI ADVISOR MODULE)
+// ============================================================================
+app.post("/api/assessment/analyze-strengths-weaknesses", async (req: Request, res: Response) => {
+  const { attemptId } = req.body;
+
+  let attempt = dbAttempts.find(a => a.id === attemptId);
+  
+  // High-fidelity preset for Alex Rivera (user-candidate-1) or cert-9821-ab
+  if (!attempt && (attemptId === "cert-9821-ab" || attemptId === "user-candidate-1" || attemptId === "attempt-rivera")) {
+    const riveraAnalysis = {
+      strengths: [
+        { area: "React Performance & Rendering", description: "Demonstrated superior expertise in optimizing render cycles, preventing unnecessary component re-renders with React.memo and useCallback hook structures." },
+        { area: "REST & CORS Configuration", description: "Exhibited highly secure backend knowledge, correctly specifying CORS Access-Control-Allow-Origin parameters to defend against unauthorized cross-origin requests." },
+        { area: "Agile Project Processes", description: "Successfully resolved mid-sprint scope changes in team scenarios, maintaining project commitments through proper estimation and scope negotiation." }
+      ],
+      weaknesses: [
+        { area: "Cache Eviction (Redis)", description: "Identified minor gaps in Redis memory eviction strategies under thundering herd/cache stampede peak loads." },
+        { area: "Edge-Case Inputs Validation", description: "Code review recommends incorporating defensive type/range verification checks against null or empty arrays." }
+      ],
+      summary: "Alex Rivera shows outstanding frontend architectural capabilities and very solid backend integration patterns. With minor refinements in extreme load database caching and strict edge-case defensive input programming, they are fully qualified for a Senior-tier Frontend or Full Stack Engineer role.",
+      actionPlan: [
+        "Review Redis mutex and locking mechanisms to resolve thundering herd/cache stampede workloads.",
+        "Practice implementing defensive error boundaries and empty-state parameter protections across coding sandbox problems.",
+        "Deep-dive into OWASP security guidelines regarding parameterized inputs."
+      ]
+    };
+    return res.json({ success: true, analysis: riveraAnalysis });
+  }
+
+  if (!attempt) {
+    const defaultAnalysis = {
+      strengths: [
+        { area: "Core Language Syntax", description: "Excellent application of structured types and functional conventions." },
+        { area: "Code Quality", description: "Solid code formatting standards with helpful documentation comments." }
+      ],
+      weaknesses: [
+        { area: "Big-O Time Complexity", description: "Some logic paths contain nested loops that could be optimized using linear Map lookups." }
+      ],
+      summary: "The candidate demonstrated solid software engineering fundamentals. Focus on optimizing time-space complexities to handle high-scale data inputs efficiently.",
+      actionPlan: [
+        "Refactor nested lookup algorithms with hash maps or sets to achieve O(N) performance.",
+        "Incorporate strict parameter validations for empty collections.",
+        "Explore OWASP Top 10 vulnerabilities list for secure web development practices."
+      ]
+    };
+    return res.json({ success: true, analysis: defaultAnalysis });
+  }
+
+  const questions = attempt.questions || [];
+  const answers = attempt.answers || {};
+
+  const correctQuestions: Question[] = [];
+  const incorrectQuestions: Question[] = [];
+
+  questions.forEach(q => {
+    const userAns = answers[q.id];
+    if (userAns !== undefined) {
+      let isCorrect = false;
+      if (Array.isArray(q.correctAnswer)) {
+        const userArr = Array.isArray(userAns) ? userAns : [userAns];
+        isCorrect = q.correctAnswer.length === userArr.length && 
+                    q.correctAnswer.every(val => userArr.includes(val));
+      } else {
+        isCorrect = String(userAns).trim().toLowerCase() === String(q.correctAnswer).trim().toLowerCase();
+      }
+      if (isCorrect) {
+        correctQuestions.push(q);
+      } else {
+        incorrectQuestions.push(q);
+      }
+    } else if (q.type === "coding") {
+      const passed = attempt.codingTestsPassedCount || 0;
+      const total = attempt.codingTestsTotalCount || 1;
+      if (passed === total && total > 0) {
+        correctQuestions.push(q);
+      } else {
+        incorrectQuestions.push(q);
+      }
+    } else {
+      incorrectQuestions.push(q);
+    }
+  });
+
+  if (aiClient) {
+    try {
+      console.log(`Querying Gemini 3.5 Flash for Strengths & Weaknesses on attempt: ${attempt.id}`);
+      
+      const analysisPrompt = `You are a premium, objective Technical Assessment Architect.
+Analyze this candidate's performance on their technical screening assessment in the category: "${attempt.category}".
+Difficulty level: "${attempt.difficulty}".
+Candidate Overall Score: ${attempt.overallCandidateScore}/100.
+Technical Knowledge Score: ${attempt.technicalKnowledgeScore}/100.
+Coding Assignment Score: ${attempt.codingAssignmentScore}/100.
+AI Code Review Score: ${attempt.codeReviewScore}/100.
+
+Here are the questions they answered correctly:
+${correctQuestions.map((q, idx) => `${idx + 1}. Title: "${q.title}" | Tags: ${q.tags.join(", ")} | Tech: ${q.technologyStack.join(", ")}`).join("\n")}
+
+Here are the questions they got wrong or had incomplete:
+${incorrectQuestions.map((q, idx) => `${idx + 1}. Title: "${q.title}" | Tags: ${q.tags.join(", ")} | Tech: ${q.technologyStack.join(", ")} | Description: "${q.description}"`).join("\n")}
+
+${attempt.codeReviewSummary ? `AI Code Review Summary on their coding submission:
+- Readability Assessment: ${attempt.codeReviewSummary.readabilityAssessment}
+- Complexity Analysis: ${attempt.codeReviewSummary.complexityAnalysis}
+- Recommendations: ${attempt.codeReviewSummary.recommendations.join(", ")}` : ""}
+
+Based on these details, produce a high-fidelity 'Strengths & Weaknesses' analysis.
+You MUST output valid JSON strictly matching this schema:
+{
+  "strengths": [
+    { "area": "Name of technical area", "description": "1-2 sentences of specific technical evidence explaining why this is a strength based on their correct answers." }
+  ],
+  "weaknesses": [
+    { "area": "Name of area needing improvement", "description": "1-2 sentences of specific feedback pointing out why they struggled here and what concepts they need to review." }
+  ],
+  "summary": "A cohesive 2-3 sentence overall summary of the candidate's technical profile, experience fit, and recommendation.",
+  "actionPlan": [
+    "Exactly 3 highly actionable, specific learning steps or practice recommendations (with standard references like MDN, OWASP, or design patterns)."
+  ]
+}
+
+Ensure you provide exactly 2-3 strengths, exactly 2-3 weaknesses, a summary, and exactly 3 action plan steps. Keep the tone professional, constructive, and highly technical. Avoid generic advice.`;
+
+      const geminiResponse = await aiClient.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: analysisPrompt,
+        config: {
+          systemInstruction: "You are a senior technical assessment evaluator and AI advisor. Output fully valid JSON matching the specified schema exactly. Do not include markdown wraps around the JSON block.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              strengths: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    area: { type: Type.STRING },
+                    description: { type: Type.STRING }
+                  },
+                  required: ["area", "description"]
+                }
+              },
+              weaknesses: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    area: { type: Type.STRING },
+                    description: { type: Type.STRING }
+                  },
+                  required: ["area", "description"]
+                }
+              },
+              summary: { type: Type.STRING },
+              actionPlan: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
+            },
+            required: ["strengths", "weaknesses", "summary", "actionPlan"]
+          }
+        }
+      });
+
+      const parsedAnalysis = JSON.parse(geminiResponse.text.trim());
+      return res.json({ success: true, analysis: parsedAnalysis });
+    } catch (err) {
+      console.error("Gemini Strengths/Weaknesses generation failed, falling back to local analysis", err);
+    }
+  }
+
+  const strengths: { area: string; description: string }[] = [];
+  const weaknesses: { area: string; description: string }[] = [];
+  const actionPlan: string[] = [];
+
+  const correctTags = new Set<string>();
+  correctQuestions.forEach(q => q.tags.forEach(t => correctTags.add(t)));
+
+  const incorrectTags = new Set<string>();
+  incorrectQuestions.forEach(q => q.tags.forEach(t => incorrectTags.add(t)));
+
+  if (correctQuestions.length > 0) {
+    correctQuestions.slice(0, 3).forEach(q => {
+      strengths.push({
+        area: q.title.replace(/^(Understanding|Optimizing|Handling|Scenario:)\s+/i, ""),
+        description: `Successfully mastered concepts in ${q.tags.join(" & ")}. Demonstrated accurate reasoning under technical criteria.`
+      });
+    });
+  } else {
+    strengths.push({
+      area: "Technical Execution",
+      description: "Demonstrated commitment to completing the assessment under timed proctor conditions."
+    });
+  }
+
+  if (incorrectQuestions.length > 0) {
+    incorrectQuestions.slice(0, 2).forEach(q => {
+      weaknesses.push({
+        area: q.title.replace(/^(Understanding|Optimizing|Handling|Scenario:)\s+/i, ""),
+        description: `Encountered difficulty with the core principles of ${q.tags.join(" or ")}. Needs a thorough review of the associated operational guidelines.`
+      });
+    });
+  } else {
+    weaknesses.push({
+      area: "Advanced Optimizations",
+      description: "No significant mistakes detected. Focus on keeping up to date with new library specifications and performance updates."
+    });
+  }
+
+  if (incorrectQuestions.length > 0) {
+    incorrectQuestions.slice(0, 3).forEach(q => {
+      actionPlan.push(`Review the documentation and best practices regarding ${q.tags.join(", ")} to consolidate knowledge of ${q.title}.`);
+    });
+    while (actionPlan.length < 3) {
+      actionPlan.push("Practice algorithmic constraints in mock sandboxes to ensure efficient O(N) runtime complexities.");
+    }
+  } else {
+    actionPlan.push("Study advanced architectural designs and caching layers using Redis and microservice circuit breakers.");
+    actionPlan.push("Contribute to open-source libraries in the frontend ecosystem to gain edge case perspectives.");
+    actionPlan.push("Conduct mock peer review sessions to polish professional engineering feedback style.");
+  }
+
+  const summary = `The candidate has completed the ${attempt.category} assessment with an overall score of ${attempt.overallCandidateScore}%. They demonstrated a solid foundation in ${correctQuestions.slice(0, 2).map(q => q.tags[0]).filter(Boolean).join(" and ") || "fundamental engineering topics"}, while showing opportunities to grow in ${incorrectQuestions.slice(0, 2).map(q => q.tags[0]).filter(Boolean).join(" and ") || "more advanced concepts"}.`;
+
+  const localAnalysis = {
+    strengths,
+    weaknesses,
+    summary,
+    actionPlan: actionPlan.slice(0, 3)
+  };
+
+  return res.json({ success: true, analysis: localAnalysis, fallback: true });
+});
+
 // 8. CANDIDATE REPOSITORY & ADVANCED SEARCH (Module 10, 11)
 app.get("/api/recruiter/candidates", (req: Request, res: Response) => {
   // Return completed candidates matching filters
@@ -1578,10 +1814,26 @@ app.get("/api/analytics/recruiter", (req: Request, res: Response) => {
   const totalCompletedAssessments = dbAttempts.filter(a => a.status === "completed").length;
   const certifiedRatio = Math.round((dbCertificates.length / Math.max(1, dbAttempts.length)) * 100);
 
+  const candidates = dbUsers.filter(u => u.role === UserRole.CANDIDATE);
+
+  const proficiencyDistribution = [
+    { name: "Junior (0-2y)", count: candidates.filter(c => c.experienceLevel === "junior").length || 12 },
+    { name: "Mid-Level (2-5y)", count: candidates.filter(c => c.experienceLevel === "mid").length || 24 },
+    { name: "Senior (5-10y)", count: candidates.filter(c => c.experienceLevel === "senior").length || 18 },
+    { name: "Advanced (10y+)", count: candidates.filter(c => c.experienceLevel === "advanced").length || 8 }
+  ];
+
+  const scoreDistribution = [
+    { name: "Below 60% (Needs Improvement)", count: 5 },
+    { name: "60% - 75% (Passing)", count: 18 },
+    { name: "75% - 90% (Proficient)", count: 32 },
+    { name: "90% - 100% (Expert)", count: 14 }
+  ];
+
   // Return formatted reports
   res.json({
     kpis: {
-      totalCandidates: dbUsers.filter(u => u.role === UserRole.CANDIDATE).length,
+      totalCandidates: candidates.length,
       assessmentsTaken: dbAttempts.length + 42, // with historically mock counts
       averageUptime: "99.98%",
       averageScore: 78.4
@@ -1600,6 +1852,8 @@ app.get("/api/analytics/recruiter", (req: Request, res: Response) => {
       { name: "Quality Assurance", count: 12, avgScore: 81 },
       { name: "Software Project Management", count: 8, avgScore: 88 }
     ],
+    proficiencyDistribution,
+    scoreDistribution,
     slaMetrics: dbSlaMetrics
   });
 });
