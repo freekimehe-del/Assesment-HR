@@ -35,7 +35,8 @@ import {
   Mail,
   Sliders,
   Building,
-  GraduationCap
+  GraduationCap,
+  Video
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -66,7 +67,7 @@ interface PermissionGroup {
 }
 
 export default function AdminDashboard(props: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<"analytics" | "users" | "permissions" | "cms">("analytics");
+  const [activeTab, setActiveTab] = useState<"analytics" | "users" | "permissions" | "cms" | "integrations">("analytics");
   const [userSubTab, setUserSubTab] = useState<"recruiters" | "candidates">("recruiters");
   
   // Lists
@@ -148,6 +149,60 @@ export default function AdminDashboard(props: AdminDashboardProps) {
     "[" + new Date().toISOString() + "] SUCCESS: Gemini Core 2.5-pro model review pipeline standing by.",
     "[" + new Date().toISOString() + "] INFO: Port 3000 Nginx reverse ingress channels established."
   ]);
+
+  // Integrations states
+  const [integrationsConfig, setIntegrationsConfig] = useState<any>({
+    googleMeetEnabled: true,
+    zoomEnabled: true,
+    msTeamsEnabled: true,
+    customLinksEnabled: true,
+    apiCredentials: {
+      googleClientId: "secured_client_id_oauth",
+      zoomClientId: "secured_client_id_oauth",
+      msTeamsClientId: "secured_client_id_oauth"
+    },
+    reminders: {
+      notifyOnSchedule: true,
+      notifyOnUpdate: true,
+      notifyOnCancel: true,
+      notifyOnReschedule: true,
+      remind24h: true,
+      remind1h: true,
+      remind15m: true
+    }
+  });
+  const [allInterviewsList, setAllInterviewsList] = useState<any[]>([]);
+  const [loadingIntegrations, setLoadingIntegrations] = useState(false);
+  const [savingIntegrations, setSavingIntegrations] = useState(false);
+
+  const fetchIntegrationsAndInterviews = async () => {
+    try {
+      setLoadingIntegrations(true);
+      const [intRes, listRes] = await Promise.all([
+        fetch("/api/admin/integrations"),
+        fetch("/api/interviews")
+      ]);
+      const intData = await intRes.json();
+      const listData = await listRes.json();
+      
+      if (intData.success) {
+        setIntegrationsConfig(intData.settings);
+      }
+      if (listData.success) {
+        setAllInterviewsList(listData.interviews);
+      }
+    } catch (e) {
+      console.error("Failed to load integrations/interviews:", e);
+    } finally {
+      setLoadingIntegrations(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "integrations") {
+      fetchIntegrationsAndInterviews();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     fetchQuestions();
@@ -846,6 +901,15 @@ export default function AdminDashboard(props: AdminDashboardProps) {
               <span className="ml-auto px-1.5 py-0.5 bg-emerald-600 text-white font-mono text-[9px] font-bold rounded-md leading-none">
                 {questions.length}
               </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("integrations")}
+              className={`w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer ${activeTab === "integrations" ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/10" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}
+              id="admin-tab-integrations"
+            >
+              <Video className="w-4 h-4" />
+              <span>Interview Integrations</span>
             </button>
           </div>
 

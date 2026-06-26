@@ -186,3 +186,37 @@ export interface AssessmentRequest {
   requestedAt: string;
   status: "pending" | "dismissed" | "completed";
 }
+
+export interface Interview {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  candidateEmail: string;
+  technologyArea: string;
+  score: number;
+  recruiterId: string;
+  interviewerIds: string[];
+  interviewerNames?: string[];
+  meetingPlatform: "Google Meet" | "Zoom" | "MS Teams" | "Custom";
+  meetingLink: string;
+  meetingId?: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:MM
+  timeZone: string; // e.g. "UTC", "EST", "PST"
+  duration: number; // minutes
+  status: "scheduled" | "confirmed" | "completed" | "cancelled" | "upcoming" | "rescheduled" | "missed";
+  notes?: string;
+  attachments?: string[];
+  feedback?: string;
+  rating?: number;
+  decision?: string; // "hire" | "reject" | "hold" | "pending"
+  createdBy: string;
+  updatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+  attendanceConfirmed?: boolean;
+  rescheduleRequested?: boolean;
+  rescheduleReason?: string;
+  auditHistory?: { timestamp: string; action: string; performedBy: string; details: string }[];
+}
+

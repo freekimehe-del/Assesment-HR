@@ -17,7 +17,8 @@ import {
   AICodeReviewResult, 
   DigitalCertificate,
   ProctoringLog,
-  AssessmentRequest
+  AssessmentRequest,
+  Interview
 } from "./src/types";
 
 // Load environment variables
@@ -1031,6 +1032,70 @@ let dbAssessmentRequests: AssessmentRequest[] = [
     difficulty: "mid",
     requestedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 mins ago
     status: "pending"
+  }
+];
+
+// In-Memory Database for Interviews
+let dbInterviews: Interview[] = [
+  {
+    id: "int-seed-1",
+    candidateId: "user-candidate-1",
+    candidateName: "Alex Rivera",
+    candidateEmail: "candidate@saas.com",
+    technologyArea: "Full Stack Development",
+    score: 84.5,
+    recruiterId: "user-recruiter-1",
+    interviewerIds: ["user-recruiter-1"],
+    interviewerNames: ["Marcus Thompson"],
+    meetingPlatform: "Google Meet",
+    meetingLink: "https://meet.google.com/abc-defg-hij",
+    meetingId: "abc-defg-hij",
+    date: "2026-06-27", // tomorrow
+    time: "10:00",
+    timeZone: "UTC",
+    duration: 45,
+    status: "scheduled",
+    notes: "Follow-up discussion regarding React hook memoization and database indexing solutions from their assessment attempt.",
+    createdBy: "user-recruiter-1",
+    updatedBy: "user-recruiter-1",
+    createdAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+    attendanceConfirmed: true,
+    auditHistory: [
+      { timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), action: "interview_scheduled", performedBy: "Marcus Thompson", details: "Interview scheduled on Google Meet for tomorrow." }
+    ]
+  },
+  {
+    id: "int-seed-2",
+    candidateId: "user-candidate-1",
+    candidateName: "Alex Rivera",
+    candidateEmail: "candidate@saas.com",
+    technologyArea: "Full Stack Development",
+    score: 84.5,
+    recruiterId: "user-recruiter-1",
+    interviewerIds: ["user-recruiter-1"],
+    interviewerNames: ["Marcus Thompson"],
+    meetingPlatform: "Zoom",
+    meetingLink: "https://zoom.us/j/9812738210",
+    meetingId: "9812738210",
+    date: "2026-06-25", // yesterday
+    time: "14:00",
+    timeZone: "UTC",
+    duration: 60,
+    status: "completed",
+    notes: "Introductory cultural screening and coding retrospective.",
+    feedback: "Alex displayed exceptional proficiency in core asynchronous concepts and architectural patterns. Communication is extremely professional.",
+    rating: 5,
+    decision: "hire",
+    createdBy: "user-recruiter-1",
+    updatedBy: "user-recruiter-1",
+    createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
+    attendanceConfirmed: true,
+    auditHistory: [
+      { timestamp: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(), action: "interview_scheduled", performedBy: "Marcus Thompson", details: "Initial scheduling." },
+      { timestamp: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(), action: "feedback_submitted", performedBy: "Marcus Thompson", details: "Completed screening with 5/5 stars rating. Recommended 'hire'." }
+    ]
   }
 ];
 
@@ -3026,6 +3091,406 @@ Rules:
   });
 });
 
+// ==========================================
+// INTERVIEW SCHEDULING & VIDEO INTEGRATION ENDPOINTS
+// ==========================================
+
+let dbIntegrationSettings = {
+  googleMeetEnabled: true,
+  zoomEnabled: true,
+  msTeamsEnabled: true,
+  customLinksEnabled: true,
+  apiCredentials: {
+    googleClientId: "secured_client_id_oauth",
+    zoomClientId: "secured_client_id_oauth",
+    msTeamsClientId: "secured_client_id_oauth"
+  },
+  reminders: {
+    notifyOnSchedule: true,
+    notifyOnUpdate: true,
+    notifyOnCancel: true,
+    notifyOnReschedule: true,
+    remind24h: true,
+    remind1h: true,
+    remind15m: true
+  }
+};
+
+// Helper: check time overlap
+function checkTimeOverlap(
+  date1: string,
+  time1: string,
+  duration1: number,
+  date2: string,
+  time2: string,
+  duration2: number
+): boolean {
+  if (date1 !== date2) return false;
+  
+  const [h1, m1] = time1.split(":").map(Number);
+  const [h2, m2] = time2.split(":").map(Number);
+  
+  const start1 = h1 * 60 + m1;
+  const end1 = start1 + duration1;
+  
+  const start2 = h2 * 60 + m2;
+  const end2 = start2 + duration2;
+  
+  return start1 < end2 && start2 < end1;
+}
+
+// 1. Get all interviews
+app.get("/api/interviews", (req: Request, res: Response) => {
+  const { candidateId, recruiterId, status } = req.query;
+  let filtered = [...dbInterviews];
+  
+  if (candidateId) {
+    filtered = filtered.filter(i => i.candidateId === candidateId);
+  }
+  if (recruiterId) {
+    filtered = filtered.filter(i => i.recruiterId === recruiterId);
+  }
+  if (status) {
+    filtered = filtered.filter(i => i.status === status);
+  }
+  
+  res.json({ success: true, interviews: filtered });
+});
+
+// 2. Schedule a new interview
+app.post("/api/interviews", (req: Request, res: Response) => {
+  const { 
+    candidateId, 
+    candidateName, 
+    candidateEmail, 
+    technologyArea, 
+    score, 
+    recruiterId, 
+    interviewerIds, 
+    interviewerNames,
+    meetingPlatform, 
+    meetingLink, 
+    date, 
+    time, 
+    timeZone, 
+    duration, 
+    notes,
+    createdBy
+  } = req.body;
+
+  if (!candidateId || !candidateName || !date || !time) {
+    return res.status(400).json({ error: "Missing required fields (candidateId, candidateName, date, time)" });
+  }
+
+  // Conflict detection
+  const conflicts = dbInterviews.filter(i => 
+    i.status !== "cancelled" && 
+    checkTimeOverlap(i.date, i.time, i.duration, date, time, duration || 45)
+  );
+
+  const candidateConflict = conflicts.some(i => i.candidateId === candidateId);
+  const recruiterConflict = conflicts.some(i => i.recruiterId === (recruiterId || createdBy));
+
+  if (candidateConflict || recruiterConflict) {
+    return res.status(409).json({
+      error: "Time slot conflict detected.",
+      conflictType: candidateConflict ? "candidate" : "recruiter",
+      message: candidateConflict 
+        ? "The candidate is already scheduled for another interview at this time." 
+        : "You (or the designated interviewer) have a scheduling conflict at this time."
+    });
+  }
+
+  // Generate meeting link automatically if requested
+  let finalLink = meetingLink || "";
+  let finalId = "";
+  if (!finalLink) {
+    const randomHex = () => Math.random().toString(16).substring(2, 6);
+    if (meetingPlatform === "Google Meet") {
+      finalId = `${randomHex()}-${randomHex()}-${randomHex()}`;
+      finalLink = `https://meet.google.com/${finalId}`;
+    } else if (meetingPlatform === "Zoom") {
+      finalId = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+      finalLink = `https://zoom.us/j/${finalId}`;
+    } else if (meetingPlatform === "MS Teams") {
+      finalId = `teams-meet-${randomHex()}-${randomHex()}`;
+      finalLink = `https://teams.microsoft.com/l/meetup-join/${finalId}`;
+    } else {
+      finalLink = "https://meet.google.com/generic-room";
+    }
+  }
+
+  const newInterview: Interview = {
+    id: `int-${Date.now()}`,
+    candidateId,
+    candidateName,
+    candidateEmail: candidateEmail || "candidate@saas.com",
+    technologyArea: technologyArea || "Technical Role",
+    score: score || 0,
+    recruiterId: recruiterId || "user-recruiter-1",
+    interviewerIds: interviewerIds || ["user-recruiter-1"],
+    interviewerNames: interviewerNames || ["Marcus Thompson"],
+    meetingPlatform: meetingPlatform || "Google Meet",
+    meetingLink: finalLink,
+    meetingId: finalId || undefined,
+    date,
+    time,
+    timeZone: timeZone || "UTC",
+    duration: duration || 45,
+    status: "scheduled",
+    notes: notes || "",
+    createdBy: createdBy || "user-recruiter-1",
+    updatedBy: createdBy || "user-recruiter-1",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    attendanceConfirmed: false,
+    auditHistory: [
+      { 
+        timestamp: new Date().toISOString(), 
+        action: "interview_scheduled", 
+        performedBy: recruiterId || "Recruiter", 
+        details: `Interview scheduled on ${meetingPlatform}. Date: ${date}, Time: ${time}` 
+      }
+    ]
+  };
+
+  dbInterviews.unshift(newInterview);
+
+  // Trigger in-app notification
+  const notif: RecruiterNotification = {
+    id: `notif-${Date.now()}`,
+    type: "upcoming_interview",
+    title: `Interview Scheduled: ${candidateName}`,
+    message: `Your technical interview with ${candidateName} has been booked for ${date} at ${time} on ${meetingPlatform}.`,
+    timestamp: new Date().toISOString(),
+    recipientEmail: candidateEmail || "recruiter@saas.com",
+    candidateName,
+    candidateId,
+    status: "sent",
+    metadata: {
+      interviewId: newInterview.id,
+      date,
+      time,
+      meetingLink: finalLink
+    }
+  };
+  dbNotifications.unshift(notif);
+
+  res.status(201).json({ success: true, interview: newInterview, notification: notif });
+});
+
+// 3. Reschedule an interview
+app.post("/api/interviews/:id/reschedule", (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { date, time, duration, timeZone, notes, performedBy } = req.body;
+  
+  const idx = dbInterviews.findIndex(i => i.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Interview not found" });
+  }
+
+  if (!date || !time) {
+    return res.status(400).json({ error: "Missing required fields (date, time)" });
+  }
+
+  // Conflict detection excluding current interview
+  const conflicts = dbInterviews.filter(i => 
+    i.id !== id &&
+    i.status !== "cancelled" && 
+    checkTimeOverlap(i.date, i.time, i.duration, date, time, duration || dbInterviews[idx].duration)
+  );
+
+  const candidateConflict = conflicts.some(i => i.candidateId === dbInterviews[idx].candidateId);
+  const recruiterConflict = conflicts.some(i => i.recruiterId === dbInterviews[idx].recruiterId);
+
+  if (candidateConflict || recruiterConflict) {
+    return res.status(409).json({
+      error: "Time slot conflict detected during rescheduling.",
+      conflictType: candidateConflict ? "candidate" : "recruiter",
+      message: candidateConflict 
+        ? "The candidate is already scheduled for another interview at this time." 
+        : "You (or the designated interviewer) have a scheduling conflict at this time."
+    });
+  }
+
+  const originalDate = dbInterviews[idx].date;
+  const originalTime = dbInterviews[idx].time;
+
+  dbInterviews[idx].date = date;
+  dbInterviews[idx].time = time;
+  if (duration) dbInterviews[idx].duration = duration;
+  if (timeZone) dbInterviews[idx].timeZone = timeZone;
+  if (notes) dbInterviews[idx].notes = notes;
+  dbInterviews[idx].status = "rescheduled";
+  dbInterviews[idx].rescheduleRequested = false;
+  dbInterviews[idx].rescheduleReason = "";
+  dbInterviews[idx].updatedAt = new Date().toISOString();
+  dbInterviews[idx].updatedBy = performedBy || "Recruiter";
+  
+  if (!dbInterviews[idx].auditHistory) dbInterviews[idx].auditHistory = [];
+  dbInterviews[idx].auditHistory!.push({
+    timestamp: new Date().toISOString(),
+    action: "interview_rescheduled",
+    performedBy: performedBy || "Recruiter",
+    details: `Rescheduled from ${originalDate} ${originalTime} to ${date} ${time}.`
+  });
+
+  // Trigger in-app notification
+  const notif: RecruiterNotification = {
+    id: `notif-${Date.now()}`,
+    type: "upcoming_interview",
+    title: `Interview Rescheduled: ${dbInterviews[idx].candidateName}`,
+    message: `Your technical interview with ${dbInterviews[idx].candidateName} was rescheduled to ${date} at ${time}.`,
+    timestamp: new Date().toISOString(),
+    recipientEmail: dbInterviews[idx].candidateEmail,
+    candidateName: dbInterviews[idx].candidateName,
+    candidateId: dbInterviews[idx].candidateId,
+    status: "sent",
+    metadata: {
+      interviewId: id,
+      date,
+      time,
+      meetingLink: dbInterviews[idx].meetingLink
+    }
+  };
+  dbNotifications.unshift(notif);
+
+  res.json({ success: true, interview: dbInterviews[idx], notification: notif });
+});
+
+// 4. Cancel an interview
+app.post("/api/interviews/:id/cancel", (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { performedBy, reason } = req.body;
+
+  const idx = dbInterviews.findIndex(i => i.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Interview not found" });
+  }
+
+  dbInterviews[idx].status = "cancelled";
+  dbInterviews[idx].updatedAt = new Date().toISOString();
+  dbInterviews[idx].updatedBy = performedBy || "Recruiter";
+
+  if (!dbInterviews[idx].auditHistory) dbInterviews[idx].auditHistory = [];
+  dbInterviews[idx].auditHistory!.push({
+    timestamp: new Date().toISOString(),
+    action: "interview_cancelled",
+    performedBy: performedBy || "Recruiter",
+    details: `Cancelled interview. Reason: ${reason || "Not provided"}`
+  });
+
+  // Trigger in-app notification
+  const notif: RecruiterNotification = {
+    id: `notif-${Date.now()}`,
+    type: "upcoming_interview",
+    title: `Interview Cancelled: ${dbInterviews[idx].candidateName}`,
+    message: `Your technical interview with ${dbInterviews[idx].candidateName} on ${dbInterviews[idx].date} was cancelled.`,
+    timestamp: new Date().toISOString(),
+    recipientEmail: dbInterviews[idx].candidateEmail,
+    candidateName: dbInterviews[idx].candidateName,
+    candidateId: dbInterviews[idx].candidateId,
+    status: "sent",
+    metadata: {
+      interviewId: id,
+      reason: reason || ""
+    }
+  };
+  dbNotifications.unshift(notif);
+
+  res.json({ success: true, interview: dbInterviews[idx], notification: notif });
+});
+
+// 5. Submit interview feedback
+app.post("/api/interviews/:id/feedback", (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { rating, decision, feedback, performedBy } = req.body;
+
+  const idx = dbInterviews.findIndex(i => i.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Interview not found" });
+  }
+
+  dbInterviews[idx].rating = rating || 5;
+  dbInterviews[idx].decision = decision || "hire";
+  dbInterviews[idx].feedback = feedback || "";
+  dbInterviews[idx].status = "completed";
+  dbInterviews[idx].updatedAt = new Date().toISOString();
+  dbInterviews[idx].updatedBy = performedBy || "Recruiter";
+
+  if (!dbInterviews[idx].auditHistory) dbInterviews[idx].auditHistory = [];
+  dbInterviews[idx].auditHistory!.push({
+    timestamp: new Date().toISOString(),
+    action: "feedback_submitted",
+    performedBy: performedBy || "Recruiter",
+    details: `Submitted rating of ${rating}/5, decision '${decision}'.`
+  });
+
+  res.json({ success: true, interview: dbInterviews[idx] });
+});
+
+// 6. Confirm attendance (by candidate)
+app.post("/api/interviews/:id/confirm-attendance", (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const idx = dbInterviews.findIndex(i => i.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Interview not found" });
+  }
+
+  dbInterviews[idx].attendanceConfirmed = true;
+  dbInterviews[idx].status = "confirmed";
+  dbInterviews[idx].updatedAt = new Date().toISOString();
+
+  if (!dbInterviews[idx].auditHistory) dbInterviews[idx].auditHistory = [];
+  dbInterviews[idx].auditHistory!.push({
+    timestamp: new Date().toISOString(),
+    action: "attendance_confirmed",
+    performedBy: dbInterviews[idx].candidateName,
+    details: "Candidate confirmed they will attend the scheduled interview."
+  });
+
+  res.json({ success: true, interview: dbInterviews[idx] });
+});
+
+// 7. Request rescheduling (by candidate)
+app.post("/api/interviews/:id/request-reschedule", (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { reason } = req.body;
+
+  const idx = dbInterviews.findIndex(i => i.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ error: "Interview not found" });
+  }
+
+  dbInterviews[idx].rescheduleRequested = true;
+  dbInterviews[idx].rescheduleReason = reason || "";
+  dbInterviews[idx].updatedAt = new Date().toISOString();
+
+  if (!dbInterviews[idx].auditHistory) dbInterviews[idx].auditHistory = [];
+  dbInterviews[idx].auditHistory!.push({
+    timestamp: new Date().toISOString(),
+    action: "reschedule_requested",
+    performedBy: dbInterviews[idx].candidateName,
+    details: `Candidate requested rescheduling. Reason: ${reason || "Not specified"}`
+  });
+
+  res.json({ success: true, interview: dbInterviews[idx] });
+});
+
+// 8. Integrations settings (Admin view)
+app.get("/api/admin/integrations", (req: Request, res: Response) => {
+  res.json({ success: true, settings: dbIntegrationSettings });
+});
+
+app.post("/api/admin/integrations", (req: Request, res: Response) => {
+  const { settings } = req.body;
+  if (settings) {
+    dbIntegrationSettings = { ...dbIntegrationSettings, ...settings };
+  }
+  res.json({ success: true, settings: dbIntegrationSettings });
+});
+
 // Support fallback endpoints to clear history / reset
 app.post("/api/admin/reset", (req: Request, res: Response) => {
   dbUsers = [...DEFAULT_USERS];
@@ -3043,6 +3508,88 @@ app.post("/api/admin/reset", (req: Request, res: Response) => {
       verificationHash: "6c4f3a5b28d7a1e0"
     }
   ];
+  dbInterviews = [
+    {
+      id: "int-seed-1",
+      candidateId: "user-candidate-1",
+      candidateName: "Alex Rivera",
+      candidateEmail: "candidate@saas.com",
+      technologyArea: "Full Stack Development",
+      score: 84.5,
+      recruiterId: "user-recruiter-1",
+      interviewerIds: ["user-recruiter-1"],
+      interviewerNames: ["Marcus Thompson"],
+      meetingPlatform: "Google Meet",
+      meetingLink: "https://meet.google.com/abc-defg-hij",
+      meetingId: "abc-defg-hij",
+      date: "2026-06-27", // tomorrow
+      time: "10:00",
+      timeZone: "UTC",
+      duration: 45,
+      status: "scheduled",
+      notes: "Follow-up discussion regarding React hook memoization and database indexing solutions from their assessment attempt.",
+      createdBy: "user-recruiter-1",
+      updatedBy: "user-recruiter-1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      attendanceConfirmed: true,
+      auditHistory: [
+        { timestamp: new Date().toISOString(), action: "interview_scheduled", performedBy: "Marcus Thompson", details: "Interview scheduled on Google Meet for tomorrow." }
+      ]
+    },
+    {
+      id: "int-seed-2",
+      candidateId: "user-candidate-1",
+      candidateName: "Alex Rivera",
+      candidateEmail: "candidate@saas.com",
+      technologyArea: "Full Stack Development",
+      score: 84.5,
+      recruiterId: "user-recruiter-1",
+      interviewerIds: ["user-recruiter-1"],
+      interviewerNames: ["Marcus Thompson"],
+      meetingPlatform: "Zoom",
+      meetingLink: "https://zoom.us/j/9812738210",
+      meetingId: "9812738210",
+      date: "2026-06-25", // yesterday
+      time: "14:00",
+      timeZone: "UTC",
+      duration: 60,
+      status: "completed",
+      notes: "Introductory cultural screening and coding retrospective.",
+      feedback: "Alex displayed exceptional proficiency in core asynchronous concepts and architectural patterns. Communication is extremely professional.",
+      rating: 5,
+      decision: "hire",
+      createdBy: "user-recruiter-1",
+      updatedBy: "user-recruiter-1",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      attendanceConfirmed: true,
+      auditHistory: [
+        { timestamp: new Date().toISOString(), action: "interview_scheduled", performedBy: "Marcus Thompson", details: "Initial scheduling." },
+        { timestamp: new Date().toISOString(), action: "feedback_submitted", performedBy: "Marcus Thompson", details: "Completed screening with 5/5 stars rating. Recommended 'hire'." }
+      ]
+    }
+  ];
+  dbIntegrationSettings = {
+    googleMeetEnabled: true,
+    zoomEnabled: true,
+    msTeamsEnabled: true,
+    customLinksEnabled: true,
+    apiCredentials: {
+      googleClientId: "secured_client_id_oauth",
+      zoomClientId: "secured_client_id_oauth",
+      msTeamsClientId: "secured_client_id_oauth"
+    },
+    reminders: {
+      notifyOnSchedule: true,
+      notifyOnUpdate: true,
+      notifyOnCancel: true,
+      notifyOnReschedule: true,
+      remind24h: true,
+      remind1h: true,
+      remind15m: true
+    }
+  };
   res.json({ message: "In-memory database successfully refreshed to defaults." });
 });
 
