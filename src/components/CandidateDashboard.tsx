@@ -32,13 +32,26 @@ import {
   Twitter,
   Brain,
   Trophy,
-  Search
+  Search,
+  Compass,
+  Target
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  Tooltip,
+  Legend
+} from "recharts";
 import StrengthsWeaknessesModal from "./StrengthsWeaknessesModal";
 import MockInterviewModal from "./MockInterviewModal";
 import GlobalLeaderboard from "./GlobalLeaderboard";
 import AISummaryCard from "./AISummaryCard";
 import AIBadgeConsole, { AIBadgeSVG } from "./AIBadgeGenerator";
+import SkillBadgesShowcase from "./SkillBadgesShowcase";
 
 interface CandidateDashboardProps {
   user: UserProfile;
@@ -78,6 +91,7 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
   const [mfaEnabled, setMfaEnabled] = useState(props.user.mfaEnabled || false);
 
   // Share Achievements States
+  const [completedPrepTasks, setCompletedPrepTasks] = useState<string[]>([]);
   const [selectedCertId, setSelectedCertId] = useState<string>("");
   const [shareTemplate, setShareTemplate] = useState<"linkedin" | "twitter" | "minimal" | "personal">("linkedin");
   const [copiedText, setCopiedText] = useState(false);
@@ -491,6 +505,11 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
                 user={props.user} 
                 onNavigate={(tabId) => setActiveTab(tabId as any)} 
               />
+              <SkillBadgesShowcase 
+                user={props.user} 
+                attempts={attempts} 
+                certs={certs} 
+              />
               <form onSubmit={handleProfileSave} className="space-y-4" id="profile-tab-form">
                 <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="profile-basic-card">
                 <div className="border-b border-slate-150 pb-3 mb-4">
@@ -901,10 +920,401 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
           )}
 
           {/* ASSESSMENT RECORDS TAB */}
-          {activeTab === "history" && (
-            <div className="space-y-4 animate-fade-in" id="history-tab">
-              {/* Earned Certifications Grid */}
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="certified-registry-panel">
+          {activeTab === "history" && (() => {
+            const getAttemptScore = (a: AssessmentAttempt): number => {
+              if (typeof a.overallCandidateScore === 'number') {
+                return a.overallCandidateScore;
+              }
+              const parts: number[] = [];
+              if (typeof a.technicalKnowledgeScore === 'number') parts.push(a.technicalKnowledgeScore);
+              if (typeof a.codingAssignmentScore === 'number') parts.push(a.codingAssignmentScore);
+              if (typeof a.codeReviewScore === 'number') parts.push(a.codeReviewScore);
+              
+              if (parts.length > 0) {
+                return Math.round(parts.reduce((sum, val) => sum + val, 0) / parts.length);
+              }
+              return 0;
+            };
+
+            const radarCategories = [
+              { name: "Full Stack Development", short: "Full Stack" },
+              { name: "Front-End Development", short: "Front-End" },
+              { name: "Back-End Development", short: "Back-End" },
+              { name: "UI/UX Development", short: "UI/UX" },
+              { name: "Quality Assurance", short: "QA" },
+              { name: "Software Project Management", short: "Project Mgmt" }
+            ];
+
+            const performanceInsightsData = radarCategories.map(cat => {
+              const catAttempts = attempts.filter(
+                a => a.category === cat.name && (a.status === "completed" || a.status === "submitted")
+              );
+
+              let myScore = 0;
+              if (catAttempts.length > 0) {
+                myScore = Math.max(...catAttempts.map(getAttemptScore));
+              }
+
+              return {
+                subject: cat.short,
+                fullName: cat.name,
+                "My Score": myScore,
+                "Industry Avg": 70,
+                "Target Mastery": 90,
+                attemptsCount: catAttempts.length
+              };
+            });
+
+            const nonZeroScores = performanceInsightsData.filter(d => d["My Score"] > 0);
+            const strongestCategory = nonZeroScores.length > 0 
+              ? [...nonZeroScores].sort((a, b) => b["My Score"] - a["My Score"])[0] 
+              : null;
+            
+            const weakestCategory = nonZeroScores.length > 0
+              ? [...nonZeroScores].sort((a, b) => a["My Score"] - b["My Score"])[0]
+              : null;
+
+            return (
+              <div className="space-y-4 animate-fade-in" id="history-tab">
+                {/* Performance Insights Radar Card */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="performance-insights-card">
+                  <div className="border-b border-slate-150 pb-3 mb-5 flex flex-wrap justify-between items-center gap-2">
+                    <div>
+                      <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <Compass className="text-indigo-600 w-4.5 h-4.5" />
+                        <span>Technical Performance Insights</span>
+                      </h2>
+                      <p className="text-slate-500 text-xs mt-0.5 font-sans">
+                        Multidimensional assessment of your proficiency across primary domain verticals.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className="px-2.5 py-1 bg-indigo-50 border border-indigo-150 rounded-lg text-[10px] text-indigo-700 font-mono font-semibold">
+                        Radar Mapping: Active
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center" id="insights-grid">
+                    {/* Column 1: Radar Chart */}
+                    <div className="md:col-span-7 flex flex-col items-center justify-center min-w-0" id="radar-chart-container">
+                      <div className="w-full h-[320px] relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart cx="50%" cy="50%" outerRadius="75%" data={performanceInsightsData}>
+                            <PolarGrid stroke="#e2e8f0" />
+                            <PolarAngleAxis 
+                              dataKey="subject" 
+                              tick={{ fill: '#475569', fontSize: 10, fontWeight: 500 }}
+                            />
+                            <PolarRadiusAxis 
+                              angle={30} 
+                              domain={[0, 100]} 
+                              tick={{ fill: '#94a3b8', fontSize: 8 }}
+                            />
+                            <Radar
+                              name="My Score"
+                              dataKey="My Score"
+                              stroke="#6366f1"
+                              fill="#6366f1"
+                              fillOpacity={0.2}
+                            />
+                            <Radar
+                              name="Industry Avg (70%)"
+                              dataKey="Industry Avg"
+                              stroke="#94a3b8"
+                              fill="#94a3b8"
+                              fillOpacity={0.03}
+                              strokeDasharray="4 4"
+                            />
+                            <Radar
+                              name="Target Mastery (90%)"
+                              dataKey="Target Mastery"
+                              stroke="#10b981"
+                              fill="#10b981"
+                              fillOpacity={0.01}
+                              strokeDasharray="3 3"
+                            />
+                            <Tooltip 
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const data = payload[0].payload;
+                                  return (
+                                    <div className="bg-white border border-slate-200 p-3 rounded-xl shadow-xl text-[11px] space-y-1.5" id="radar-tooltip">
+                                      <p className="font-bold text-slate-800">{data.fullName}</p>
+                                      <div className="space-y-1">
+                                        <p className="flex justify-between gap-4">
+                                          <span className="text-indigo-600 font-medium">My Score:</span>
+                                          <span className="font-bold font-mono text-slate-900">{data["My Score"] > 0 ? `${data["My Score"]}%` : "No Attempt"}</span>
+                                        </p>
+                                        <p className="flex justify-between gap-4 text-slate-500">
+                                          <span>Industry Avg:</span>
+                                          <span className="font-mono">{data["Industry Avg"]}%</span>
+                                        </p>
+                                        <p className="flex justify-between gap-4 text-emerald-600">
+                                          <span>Target Mastery:</span>
+                                          <span className="font-mono">{data["Target Mastery"]}%</span>
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Legend 
+                              verticalAlign="bottom" 
+                              height={36}
+                              iconType="circle"
+                              iconSize={7}
+                              wrapperStyle={{ fontSize: 9, fontWeight: 500 }}
+                            />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Column 2: Proficiency Breakdown & Insights */}
+                    <div className="md:col-span-5 space-y-4" id="radar-insights-breakdown">
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <Target className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>Proficiency Scorecard</span>
+                        </h4>
+                        <div className="divide-y divide-slate-100 bg-slate-50 border border-slate-150 rounded-xl p-3.5 space-y-2.5">
+                          {performanceInsightsData.map(cat => (
+                            <div key={cat.fullName} className="pt-2 first:pt-0">
+                              <div className="flex justify-between text-[11px] mb-1">
+                                <span className="font-semibold text-slate-700 truncate max-w-[180px]">{cat.fullName}</span>
+                                <span className="font-bold font-mono text-slate-900">
+                                  {cat["My Score"] > 0 ? `${cat["My Score"]}%` : "Not Assessed"}
+                                </span>
+                              </div>
+                              <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                <div 
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    cat["My Score"] >= 90 
+                                      ? "bg-emerald-500" 
+                                      : cat["My Score"] >= 70 
+                                      ? "bg-indigo-500" 
+                                      : cat["My Score"] > 0 
+                                      ? "bg-amber-500" 
+                                      : "bg-slate-300"
+                                  }`}
+                                  style={{ width: `${Math.max(4, cat["My Score"])}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Smart Dynamic Assessment Highlights & Interactive Playbook */}
+                      <div className="bg-gradient-to-br from-indigo-50/60 to-slate-50/40 border border-indigo-100 rounded-xl p-4 text-xs space-y-4">
+                        <div className="flex justify-between items-center pb-2 border-b border-indigo-100/50">
+                          <h4 className="font-bold text-indigo-900 flex items-center gap-1.5 text-xs">
+                            <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse" />
+                            <span>Dynamic AI Prep Playbook</span>
+                          </h4>
+                          <span className="text-[10px] bg-indigo-100 text-indigo-800 font-mono font-bold px-1.5 py-0.5 rounded-md">
+                            Beta v2.4
+                          </span>
+                        </div>
+
+                        <div className="space-y-3">
+                          {/* Core diagnostic insights */}
+                          <div className="text-slate-600 text-[11px] leading-relaxed">
+                            {strongestCategory ? (
+                              <p className="flex items-start gap-1.5">
+                                <span className="text-emerald-500">🌟</span>
+                                <span>
+                                  Primary competitive edge: <strong className="text-slate-800">{strongestCategory.fullName}</strong>. Your peak score of <strong className="text-indigo-700 font-mono font-semibold">{strongestCategory["My Score"]}%</strong> exceeds 85% of active applicants.
+                                </span>
+                              </p>
+                            ) : (
+                              <p className="flex items-start gap-1.5 text-slate-500">
+                                <span>📈</span>
+                                <span>Take an assessment to generate your baseline proficiency radar map and unlock customized technical reviews.</span>
+                              </p>
+                            )}
+
+                            {weakestCategory && weakestCategory["My Score"] < 70 ? (
+                              <p className="flex items-start gap-1.5 mt-1.5">
+                                <span className="text-amber-500">🎯</span>
+                                <span>
+                                  Immediate growth area: <strong className="text-slate-800">{weakestCategory.fullName}</strong> (<span className="font-mono text-slate-700 font-semibold">{weakestCategory["My Score"]}%</span>). We've populated customized study modules below to bridge this gap.
+                                </span>
+                              </p>
+                            ) : weakestCategory ? (
+                              <p className="flex items-start gap-1.5 mt-1.5">
+                                <span className="text-emerald-500">💪</span>
+                                <span>
+                                  Excellent score distribution! All evaluated categories are currently at or above the recommended industry benchmark of 70%.
+                                </span>
+                              </p>
+                            ) : null}
+                          </div>
+
+                          {/* Recruiter Desirability Scorecard */}
+                          {(() => {
+                            const passedCertsCount = certs.length;
+                            const maxScore = strongestCategory ? strongestCategory["My Score"] : 0;
+                            const avgScore = nonZeroScores.length > 0 
+                              ? Math.round(nonZeroScores.reduce((sum, item) => sum + item["My Score"], 0) / nonZeroScores.length)
+                              : 0;
+                            
+                            // Desirability calculation formula
+                            let desirability = 15; // baseline profile completeness
+                            if (props.user.skills && props.user.skills.length > 0) desirability += 10;
+                            if (props.user.currentRole) desirability += 5;
+                            if (passedCertsCount > 0) desirability += passedCertsCount * 20;
+                            if (avgScore > 70) desirability += Math.round((avgScore - 70) * 1.5);
+                            desirability = Math.min(98, Math.max(15, desirability));
+
+                            return (
+                              <div className="bg-white border border-slate-150 rounded-xl p-3 shadow-2xs space-y-2">
+                                <div className="flex justify-between items-center text-[11px]">
+                                  <span className="font-bold text-slate-800 flex items-center gap-1">
+                                    <Target className="w-3.5 h-3.5 text-rose-500" />
+                                    <span>Recruiter Profile Index</span>
+                                  </span>
+                                  <span className="font-mono font-bold text-indigo-700">{desirability}% Match</span>
+                                </div>
+                                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden relative">
+                                  <div 
+                                    className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all duration-700"
+                                    style={{ width: `${desirability}%` }}
+                                  />
+                                </div>
+                                <p className="text-[10px] text-slate-400 font-mono leading-tight">
+                                  {desirability > 80 
+                                    ? "🔥 Top-Tier Status! Your credentials put you in the elite search results." 
+                                    : desirability > 50 
+                                    ? "👍 Strong match. Complete 1 more domain to cross the 80% recruiter visibility threshold."
+                                    : "⚡ Build presence. Complete a practice assessment or upload verified skills to rank up."}
+                                </p>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Dynamic Actionable Playbook - Stateful checklist */}
+                          {(() => {
+                            // Define 3 personalized recommendations based on candidate's current state
+                            const tasksList = [];
+                            
+                            if (!strongestCategory) {
+                              tasksList.push({
+                                id: "task_first_assess",
+                                title: "Establish Radar Baseline",
+                                desc: "Launch any certification track to initialize your technical credentials.",
+                                category: "General Prep"
+                              });
+                              tasksList.push({
+                                id: "task_complete_profile",
+                                title: "Update Bio & Skills Engine",
+                                desc: "Add at least 5 target skills to match relevant assessment pools.",
+                                category: "Profile Optimization"
+                              });
+                            } else {
+                              const weakCatName = weakestCategory ? weakestCategory.fullName : "Full Stack Development";
+                              tasksList.push({
+                                id: "task_practice_weakest",
+                                title: `Bridge Gap: ${weakCatName}`,
+                                desc: `Toggle practice mode & do a dry-run in ${weakCatName} before your next cert attempt.`,
+                                category: "Skill Bridging"
+                              });
+                              
+                              if (certs.length === 0) {
+                                tasksList.push({
+                                  id: "task_earn_first_cert",
+                                  title: "Earn Your First Digital Badge",
+                                   desc: "Score 70% or higher to mint a tamper-proof cryptographic certificate.",
+                                  category: "Credentialing"
+                                });
+                              } else {
+                                tasksList.push({
+                                  id: "task_share_linkedin",
+                                  title: "Broaden Network Visibility",
+                                  desc: "Generate your social graphic badge and export directly to LinkedIn/Twitter.",
+                                  category: "Developer Branding"
+                                });
+                              }
+                            }
+
+                            // Add a default interactive learning track suggestion
+                            tasksList.push({
+                              id: "task_security_integrity",
+                              title: "Maintain 100% Integrity Rating",
+                              desc: "Minimize window-blur switches during sessions to elevate your proctored index.",
+                              category: "Proctor Standard"
+                            });
+
+                            const completedCount = tasksList.filter(t => completedPrepTasks.includes(t.id)).length;
+                            const percentTasks = Math.round((completedCount / tasksList.length) * 100);
+
+                            return (
+                              <div className="space-y-2 pt-1">
+                                <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                  <span>Action Playbook ({completedCount}/{tasksList.length})</span>
+                                  <span className="font-mono text-indigo-600">{percentTasks}% Complete</span>
+                                </div>
+
+                                <div className="space-y-2">
+                                  {tasksList.map(task => {
+                                    const isCompleted = completedPrepTasks.includes(task.id);
+                                    return (
+                                      <div 
+                                        key={task.id}
+                                        onClick={() => {
+                                          if (isCompleted) {
+                                            setCompletedPrepTasks(prev => prev.filter(id => id !== task.id));
+                                          } else {
+                                            setCompletedPrepTasks(prev => [...prev, task.id]);
+                                          }
+                                        }}
+                                        className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-start gap-2.5 ${
+                                          isCompleted 
+                                            ? "bg-emerald-50/40 border-emerald-200 text-slate-600" 
+                                            : "bg-white border-slate-150 hover:border-indigo-300 text-slate-700 shadow-3xs"
+                                        }`}
+                                        id={`playbook-task-${task.id}`}
+                                      >
+                                        <div className={`w-4 h-4 rounded border flex items-center justify-center mt-0.5 shrink-0 ${
+                                          isCompleted 
+                                            ? "bg-emerald-500 border-emerald-600 text-white" 
+                                            : "border-slate-300 bg-slate-50"
+                                        }`}>
+                                          {isCompleted && <Check className="w-3 h-3 stroke-[3]" />}
+                                        </div>
+                                        <div className="space-y-0.5 text-left min-w-0 flex-1">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-bold text-[11px] leading-tight truncate">{task.title}</span>
+                                            <span className={`text-[8px] px-1 py-0.25 rounded uppercase font-mono font-bold tracking-wider ${
+                                              isCompleted 
+                                                ? "bg-emerald-100 text-emerald-800" 
+                                                : "bg-slate-100 text-slate-500"
+                                            }`}>{task.category}</span>
+                                          </div>
+                                          <p className="text-[10px] text-slate-500 leading-normal">{task.desc}</p>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                <p className="text-[9px] text-slate-400 font-sans italic text-center pt-1">
+                                  💡 Playbook tasks are customized dynamically based on your live assessment history.
+                                </p>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Earned Certifications Grid */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="certified-registry-panel">
                 <div className="border-b border-slate-150 pb-3 mb-3.5 flex justify-between items-center">
                   <div>
                     <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -1613,7 +2023,8 @@ export default function CandidateDashboard(props: CandidateDashboardProps) {
               )}
 
             </div>
-          )}
+          );
+         })()}
 
           {/* GDPR AUDIT TAB */}
           {activeTab === "gdpr" && (

@@ -59,6 +59,44 @@ import {
   AlertCircle
 } from "lucide-react";
 import StrengthsWeaknessesModal from "./StrengthsWeaknessesModal";
+import InterviewCalendar from "./InterviewCalendar";
+
+const getEarnedBadgesCount = (cand: any) => {
+  const scores: Record<string, number> = {};
+  
+  // 1. Attempts
+  (cand.attempts || []).forEach((att: any) => {
+    if (att.status === "completed" && att.overallCandidateScore !== undefined) {
+      scores[att.category] = Math.max(scores[att.category] || 0, att.overallCandidateScore);
+    }
+  });
+  
+  // 2. Certs
+  (cand.certs || []).forEach((cert: any) => {
+    scores[cert.technologyArea] = Math.max(scores[cert.technologyArea] || 0, cert.score);
+  });
+  
+  // 3. Fallback for preset candidate Alex Rivera
+  if (cand.id === "user-candidate-1") {
+    scores["Full Stack Development"] = Math.max(scores["Full Stack Development"] || 0, 85);
+  }
+
+  let count = 0;
+  if ((scores["Front-End Development"] || 0) >= 85) count++;
+  if ((scores["Front-End Development"] || 0) >= 70) count++;
+  if ((scores["Back-End Development"] || 0) >= 85) count++;
+  if ((scores["Back-End Development"] || 0) >= 70) count++;
+  if ((scores["Full Stack Development"] || 0) >= 85) count++;
+  if ((scores["Full Stack Development"] || 0) >= 70) count++;
+  if ((scores["UI/UX Development"] || 0) >= 85) count++;
+  if ((scores["UI/UX Development"] || 0) >= 70) count++;
+  if ((scores["Quality Assurance"] || 0) >= 85) count++;
+  if ((scores["Quality Assurance"] || 0) >= 70) count++;
+  if ((scores["Software Project Management"] || 0) >= 85) count++;
+  if ((scores["Software Project Management"] || 0) >= 70) count++;
+
+  return count;
+};
 
 interface RecruiterDashboardProps {
   user: UserProfile;
@@ -670,6 +708,12 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
                               ✓ Certified
                             </span>
                           )}
+                          {getEarnedBadgesCount(cand) > 0 && (
+                            <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-150 text-indigo-700 text-[9px] font-bold font-mono rounded-md flex items-center gap-1">
+                              <Award className="w-2.5 h-2.5 text-indigo-500 animate-pulse" />
+                              <span>{getEarnedBadgesCount(cand)} Badges</span>
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-4 text-[11px] text-slate-500">
                           <span className="flex items-center gap-1">
@@ -1148,293 +1192,12 @@ export default function RecruiterDashboard(props: RecruiterDashboardProps) {
           {/* INTERVIEW SCHEDULER TAB */}
           {activeTab === "interviews" && (
             <div className="space-y-4 animate-fade-in" id="interviews-tab-panel">
-              {/* Alert notification banner */}
-              {scheduleSuccess && (
-                <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center justify-between shadow-xs animate-pulse" id="schedule-success-banner">
-                  <div className="flex items-center gap-2">
-                    <Check className="w-4.5 h-4.5 text-emerald-600 flex-shrink-0" />
-                    <div>
-                      <p className="font-bold">Interview Booking Confirmed!</p>
-                      <p className="text-emerald-600 text-[11px]">Calendar invitations synchronized successfully. SMTP relay sent email notifications to the candidate.</p>
-                    </div>
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => setScheduleSuccess(false)}
-                    className="text-emerald-500 hover:text-emerald-700 font-bold"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                {/* Form to Book Interview */}
-                <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-5 shadow-xs h-fit" id="book-interview-card">
-                  <div className="border-b border-slate-150 pb-3 mb-4">
-                    <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <Calendar className="text-indigo-600 w-4.5 h-4.5" />
-                      <span>Book Interview Slot</span>
-                    </h2>
-                    <p className="text-slate-500 text-xs mt-0.5">Invite certified high-scoring candidates to a live-video technical interview.</p>
-                  </div>
-
-                  <form 
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      // Find chosen candidate
-                      const allOpts = [
-                        ...demoCandidates,
-                        ...candidates.map(c => ({
-                          id: c.id,
-                          fullName: c.fullName,
-                          email: c.email,
-                          score: c.overallCandidateScore || 85,
-                          area: c.latestCertifiedArea || "Full Stack"
-                        }))
-                      ];
-                      const selectedId = selectedCandidateId || allOpts[0]?.id;
-                      const cand = allOpts.find(o => o.id === selectedId);
-                      if (!cand) return;
-
-                      // Generate random meeting link based on platform
-                      let link = "https://meet.google.com/abc-defg-hij";
-                      if (interviewPlatform === "Zoom") {
-                        link = `https://zoom.us/j/${Math.floor(1000000000 + Math.random() * 9000000000)}`;
-                      } else if (interviewPlatform === "MS Teams") {
-                        link = `https://teams.microsoft.com/l/meetup-join/${Math.random().toString(36).substring(2, 15)}`;
-                      } else {
-                        const code = `${Math.random().toString(36).substring(2, 5)}-${Math.random().toString(36).substring(2, 6)}-${Math.random().toString(36).substring(2, 5)}`;
-                        link = `https://meet.google.com/${code}`;
-                      }
-
-                      const newInt = {
-                        id: `int_${Date.now()}`,
-                        candidateId: cand.id,
-                        candidateName: cand.fullName,
-                        candidateEmail: cand.email,
-                        technologyArea: cand.area,
-                        score: cand.score,
-                        date: interviewDate,
-                        time: interviewTime,
-                        duration: interviewDuration,
-                        type: interviewType,
-                        platform: interviewPlatform,
-                        meetingLink: link,
-                        notes: interviewNotes,
-                        status: "scheduled"
-                      };
-
-                      setInterviews([newInt, ...interviews]);
-                      setScheduleSuccess(true);
-                      setInterviewNotes("");
-                      // Auto dismiss banner
-                      setTimeout(() => setScheduleSuccess(false), 5000);
-                    }}
-                    className="space-y-3"
-                  >
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Select High-Scoring Candidate</label>
-                      <select
-                        value={selectedCandidateId}
-                        onChange={(e) => setSelectedCandidateId(e.target.value)}
-                        className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 transition cursor-pointer"
-                        required
-                      >
-                        <option value="">-- Choose Candidate --</option>
-                        {[
-                          ...demoCandidates,
-                          ...candidates
-                            .filter(c => (c.overallCandidateScore || 0) >= 70 && !demoCandidates.some(dc => dc.id === c.id))
-                            .map(c => ({
-                              id: c.id,
-                              fullName: c.fullName,
-                              email: c.email,
-                              score: c.overallCandidateScore,
-                              area: c.latestCertifiedArea || "General Engineering"
-                            }))
-                        ].map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.fullName} (Score: {c.score}%, {c.area})
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-slate-400 mt-0.5">*Only verified candidates who scored ≥ 70% are listed.</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Interview Date</label>
-                        <input
-                          type="date"
-                          value={interviewDate}
-                          onChange={(e) => setInterviewDate(e.target.value)}
-                          min="2026-06-23"
-                          className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 transition"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Start Time (UTC)</label>
-                        <input
-                          type="time"
-                          value={interviewTime}
-                          onChange={(e) => setInterviewTime(e.target.value)}
-                          className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 transition"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Duration</label>
-                        <select
-                          value={interviewDuration}
-                          onChange={(e) => setInterviewDuration(Number(e.target.value))}
-                          className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 transition cursor-pointer"
-                        >
-                          <option value={30}>30 Minutes</option>
-                          <option value={45}>45 Minutes</option>
-                          <option value={60}>60 Minutes</option>
-                          <option value={90}>90 Minutes</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Platform</label>
-                        <select
-                          value={interviewPlatform}
-                          onChange={(e) => setInterviewPlatform(e.target.value)}
-                          className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 transition cursor-pointer"
-                        >
-                          <option value="Google Meet">Google Meet</option>
-                          <option value="Zoom">Zoom Video</option>
-                          <option value="MS Teams">Microsoft Teams</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Interview Style / Type</label>
-                      <select
-                        value={interviewType}
-                        onChange={(e) => setInterviewType(e.target.value)}
-                        className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 transition cursor-pointer"
-                      >
-                        <option value="Technical Screening">Technical Live Coding & Sandbox Review</option>
-                        <option value="System Design">System Architecture & Scale Planning</option>
-                        <option value="Cultural Fit">Cultural Fit & Professional Communication</option>
-                        <option value="Final Executive Review">Executive Leadership Final Review</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Custom Notes / Brief</label>
-                      <textarea
-                        rows={2}
-                        value={interviewNotes}
-                        onChange={(e) => setInterviewNotes(e.target.value)}
-                        placeholder="Focus on concurrent states & query performance walkthrough."
-                        className="w-full text-xs px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:border-indigo-500 transition"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 cursor-pointer transition shadow-sm"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Book Slot & Sync Calendar</span>
-                    </button>
-                  </form>
-                </div>
-
-                {/* Scheduled Interviews Display List */}
-                <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl p-5 shadow-xs" id="scheduled-list-card">
-                  <div className="border-b border-slate-150 pb-3 mb-4 flex justify-between items-center">
-                    <div>
-                      <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                        <Video className="text-indigo-600 w-4.5 h-4.5" />
-                        <span>Upcoming Video Interviews ({interviews.length})</span>
-                      </h2>
-                      <p className="text-slate-500 text-xs mt-0.5">Real-time schedule of synchronized recruiter video screenings and assessments.</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3.5 max-h-[500px] overflow-y-auto pr-1" id="scheduled-interviews-list">
-                    {interviews.map((int) => (
-                      <div key={int.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-slate-900 text-sm">{int.candidateName}</span>
-                            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-1.5 py-0.5 rounded border border-indigo-100 font-mono">
-                              Score: {int.score}%
-                            </span>
-                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-mono uppercase ${int.status === "confirmed" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-blue-50 text-blue-700 border border-blue-200"}`}>
-                              {int.status}
-                            </span>
-                          </div>
-                          
-                          <p className="text-[11px] text-slate-500 font-medium">{int.candidateEmail} • {int.technologyArea}</p>
-
-                          <div className="flex flex-wrap gap-2 text-[10px] font-mono text-slate-500 pt-1.5">
-                            <span className="flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-slate-150">
-                              <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                              <span>{int.date} at {int.time} UTC</span>
-                            </span>
-                            <span className="flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-slate-150">
-                              <Clock className="w-3.5 h-3.5 text-slate-400" />
-                              <span>{int.duration} Mins</span>
-                            </span>
-                            <span className="flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-slate-150 font-bold text-indigo-700">
-                              <span>Type: {int.type}</span>
-                            </span>
-                          </div>
-
-                          {int.notes && (
-                            <p className="text-[11px] text-slate-500 bg-white border border-slate-150 p-2 rounded-lg italic mt-2">
-                              " {int.notes} "
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="flex sm:flex-col items-stretch sm:items-end justify-between sm:justify-center gap-2 sm:min-w-32">
-                          <a
-                            href={int.meetingLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1 sm:flex-none px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
-                          >
-                            <Video className="w-3.5 h-3.5" />
-                            <span>Join Call</span>
-                          </a>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (confirm(`Are you sure you want to cancel the interview for ${int.candidateName}?`)) {
-                                setInterviews(interviews.filter(i => i.id !== int.id));
-                              }
-                            }}
-                            className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-rose-600 hover:text-rose-800 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 cursor-pointer transition shadow-2xs"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span className="sm:hidden">Cancel</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-
-                    {interviews.length === 0 && (
-                      <div className="p-8 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-2.5">
-                        <Calendar className="w-8 h-8 text-slate-300 mx-auto" />
-                        <p className="text-slate-700 text-xs font-bold">No upcoming interviews scheduled yet.</p>
-                        <p className="text-slate-500 text-[11px]">Choose a high-scoring candidate from the left panel and click book.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              <InterviewCalendar 
+                interviews={interviews}
+                onUpdateInterviews={setInterviews}
+                candidates={candidates}
+                demoCandidates={demoCandidates}
+              />
             </div>
           )}
 

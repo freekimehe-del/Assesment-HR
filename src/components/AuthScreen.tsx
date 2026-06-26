@@ -248,11 +248,11 @@ export default function AuthScreen(props: AuthScreenProps) {
             </div>
 
             {/* Sliding Tab Triggers */}
-            <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 mb-4" id="auth-tab-triggers">
+            <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800/80 mb-5" id="auth-tab-triggers">
               <button
                 type="button"
                 onClick={() => { setIsLogin(true); setError(null); }}
-                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${isLogin ? "bg-slate-800 text-white font-bold" : "text-slate-500 hover:text-slate-300"}`}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer button-premium-active ${isLogin ? "bg-slate-800 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
                 id="tab-login"
               >
                 Sign In
@@ -260,17 +260,17 @@ export default function AuthScreen(props: AuthScreenProps) {
               <button
                 type="button"
                 onClick={() => { setIsLogin(false); setError(null); }}
-                className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer ${!isLogin ? "bg-slate-800 text-white font-bold" : "text-slate-500 hover:text-slate-300"}`}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer button-premium-active ${!isLogin ? "bg-slate-800 text-white shadow-md" : "text-slate-400 hover:text-slate-200"}`}
                 id="tab-register"
               >
                 Create Account
               </button>
             </div>
 
-            <form onSubmit={handleAuth} className="space-y-3.5" id="credentials-form">
+            <form onSubmit={handleAuth} className="space-y-4" id="credentials-form">
               {error && (
-                <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-lg text-rose-400 text-xs flex items-start gap-2" id="credentials-error">
-                  <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs flex items-start gap-2.5 animate-pulse-subtle" id="credentials-error">
+                  <Info className="w-4 h-4 mt-0.5 flex-shrink-0 text-rose-500" />
                   <span>{error}</span>
                 </div>
               )}
@@ -279,7 +279,7 @@ export default function AuthScreen(props: AuthScreenProps) {
               {!isLogin && (
                 <>
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1.5">
                       Full Name
                     </label>
                     <div className="relative">
@@ -290,21 +290,21 @@ export default function AuthScreen(props: AuthScreenProps) {
                         required
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
-                        className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 rounded-lg text-white placeholder-slate-600 transition outline-none text-xs"
+                        className="w-full pl-9 pr-3.5 py-2 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl text-white placeholder-slate-600 transition duration-200 outline-none text-xs"
                         id="reg-fullname"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1.5">
                       Registering As
                     </label>
                     <div className="grid grid-cols-2 gap-2" id="role-selector">
                       <button
                         type="button"
                         onClick={() => setRole(UserRole.CANDIDATE)}
-                        className={`py-1.5 px-3 border rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${role === UserRole.CANDIDATE ? "border-indigo-500 bg-indigo-500/10 text-indigo-300" : "border-slate-800 bg-slate-950 text-slate-500 hover:text-slate-300"}`}
+                        className={`py-2 px-3 border rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer button-premium-active ${role === UserRole.CANDIDATE ? "border-indigo-500 bg-indigo-500/10 text-indigo-300 shadow-md shadow-indigo-500/5" : "border-slate-800 bg-slate-950 text-slate-500 hover:text-slate-300 hover:border-slate-700"}`}
                         id="role-cand-trigger"
                       >
                         <User className="w-3.5 h-3.5" />
@@ -313,7 +313,7 @@ export default function AuthScreen(props: AuthScreenProps) {
                       <button
                         type="button"
                         onClick={() => setRole(UserRole.RECRUITER)}
-                        className={`py-1.5 px-3 border rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${role === UserRole.RECRUITER ? "border-indigo-500 bg-indigo-500/10 text-indigo-300" : "border-slate-800 bg-slate-950 text-slate-500 hover:text-slate-300"}`}
+                        className={`py-2 px-3 border rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer button-premium-active ${role === UserRole.RECRUITER ? "border-indigo-500 bg-indigo-500/10 text-indigo-300 shadow-md shadow-indigo-500/5" : "border-slate-800 bg-slate-950 text-slate-500 hover:text-slate-300 hover:border-slate-700"}`}
                         id="role-rec-trigger"
                       >
                         <Briefcase className="w-3.5 h-3.5" />
@@ -324,7 +324,7 @@ export default function AuthScreen(props: AuthScreenProps) {
 
                   {role === UserRole.RECRUITER && (
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                      <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1.5">
                         Company Name
                       </label>
                       <div className="relative">
@@ -335,7 +335,7 @@ export default function AuthScreen(props: AuthScreenProps) {
                           required
                           value={companyName}
                           onChange={(e) => setCompanyName(e.target.value)}
-                          className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 rounded-lg text-white placeholder-slate-600 transition outline-none text-xs"
+                          className="w-full pl-9 pr-3.5 py-2 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl text-white placeholder-slate-600 transition duration-200 outline-none text-xs"
                           id="reg-company"
                         />
                       </div>
@@ -345,7 +345,7 @@ export default function AuthScreen(props: AuthScreenProps) {
               )}
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1.5">
                   Email Address
                 </label>
                 <div className="relative">
@@ -356,14 +356,14 @@ export default function AuthScreen(props: AuthScreenProps) {
                      required
                      value={email}
                      onChange={(e) => setEmail(e.target.value)}
-                     className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 rounded-lg text-white placeholder-slate-600 transition outline-none text-xs"
+                     className="w-full pl-9 pr-3.5 py-2 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl text-white placeholder-slate-600 transition duration-200 outline-none text-xs"
                      id="credentials-email"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                <label className="block text-[10px] font-bold text-slate-450 uppercase tracking-wider mb-1.5">
                   Password
                 </label>
                 <div className="relative">
@@ -374,7 +374,7 @@ export default function AuthScreen(props: AuthScreenProps) {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-9 pr-3 py-1.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20 rounded-lg text-white placeholder-slate-600 transition outline-none text-xs"
+                    className="w-full pl-9 pr-3.5 py-2 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 rounded-xl text-white placeholder-slate-600 transition duration-200 outline-none text-xs"
                     id="credentials-pass"
                   />
                 </div>
@@ -383,7 +383,7 @@ export default function AuthScreen(props: AuthScreenProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-lg transition cursor-pointer text-xs mt-3 shadow-md"
+                className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 active:scale-98 disabled:opacity-50 text-white font-bold rounded-xl transition-all duration-200 cursor-pointer text-xs mt-4 shadow-lg shadow-indigo-650/25 font-display tracking-wide"
                 id="submit-auth-btn"
               >
                 {loading ? "Authenticating Session..." : isLogin ? "Access Portal Dashboard" : "Register and Continue"}

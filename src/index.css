@@ -9,31 +9,140 @@
   --color-slate-950: #030712;
   --color-emerald-400: #34d399;
   --color-emerald-500: #10b981;
+  
+  --animate-fade-in: fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-slide-up: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-shimmer: shimmer 2s infinite linear;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-scale-in: scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  --animate-pulse-subtle: pulse-subtle 3s ease-in-out infinite;
 }
 
-/* Custom transitions and scrollbars */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.015); }
+}
+
+/* Custom scrollbars with elegant styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.3);
+  background: rgba(15, 23, 42, 0.03);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(110, 231, 183, 0.2);
-  border-radius: 999px;
+  background: rgba(99, 102, 241, 0.15);
+  border-radius: 99px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(110, 231, 183, 0.4);
+  background: rgba(99, 102, 241, 0.3);
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.dark-glass-panel {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Premium Shadows & Accents */
+.shadow-premium {
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03), 
+              0 1px 3px rgba(0, 0, 0, 0.02),
+              inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.shadow-premium-lg {
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.05), 
+              0 1px 5px rgba(0, 0, 0, 0.02),
+              inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.shadow-dark-premium {
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5),
+              0 1px 4px rgba(255, 255, 255, 0.05);
+}
+
+.glow-indigo {
+  box-shadow: 0 0 30px rgba(99, 102, 241, 0.15);
 }
 
 .glow-emerald {
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
 }
 
 .text-glow {
-  text-shadow: 0 0 10px rgba(52, 211, 153, 0.4);
+  text-shadow: 0 0 12px rgba(99, 102, 241, 0.35);
 }
+
+/* Sleek border styling */
+.border-premium {
+  border: 1px solid rgba(226, 232, 240, 0.75);
+}
+
+.border-dark-premium {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+/* Subtle Shimmer Overlay for Buttons & Skeletal Elements */
+.shimmer-bg {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+/* Apple-style smooth active buttons */
+.button-premium-active {
+  transition: transform 0.1s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease;
+}
+.button-premium-active:active {
+  transform: scale(0.97);
+}
+
+/* Linear-style premium layout items */
+.card-hover-effect {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-hover-effect:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+

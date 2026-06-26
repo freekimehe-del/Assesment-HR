@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import Editor from "@monaco-editor/react";
 import { AssessmentAttempt, Question, ProctoringLog, AICodeReviewResult } from "../types";
 import { 
   ShieldAlert, 
@@ -27,7 +28,11 @@ import {
   Lightbulb,
   Zap,
   Check,
-  LogOut
+  LogOut,
+  Sun,
+  Moon,
+  Keyboard,
+  Grid
 } from "lucide-react";
 
 interface AssessmentEngineProps {
@@ -37,16 +42,75 @@ interface AssessmentEngineProps {
 }
 
 export default function AssessmentEngine(props: AssessmentEngineProps) {
-  const [attempt, setAttempt] = useState<AssessmentAttempt>(props.attempt);
-  const [currentIdx, setCurrentIdx] = useState(0);
+  const [attempt, setAttempt] = useState<AssessmentAttempt>(() => {
+    const base = props.attempt;
+    try {
+      const localData = localStorage.getItem(`techscreen_assessment_draft_${base.id}`);
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        if (parsed && parsed.answers) {
+          return {
+            ...base,
+            answers: {
+              ...base.answers,
+              ...parsed.answers
+            }
+          };
+        }
+      }
+    } catch (e) {
+      console.error("Failed to restore initial local storage draft:", e);
+    }
+    return base;
+  });
+
+  const [currentIdx, setCurrentIdx] = useState(() => {
+    try {
+      const localData = localStorage.getItem(`techscreen_assessment_draft_${props.attempt.id}`);
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        if (parsed && typeof parsed.currentIdx === "number" && parsed.currentIdx < props.attempt.questions.length && parsed.currentIdx >= 0) {
+          return parsed.currentIdx;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to restore initial currentIdx:", e);
+    }
+    return 0;
+  });
+
   const activeQuestion = attempt.questions[currentIdx];
   
   // Timer States
   const [overallRemaining, setOverallRemaining] = useState(() => {
-    // Total allocated seconds
+    try {
+      const localData = localStorage.getItem(`techscreen_assessment_draft_${props.attempt.id}`);
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        if (parsed && typeof parsed.overallRemaining === "number" && parsed.overallRemaining > 0) {
+          return parsed.overallRemaining;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to restore overallRemaining:", e);
+    }
     return attempt.questions.reduce((sum, q) => sum + q.timeAllocation, 0);
   });
-  const [questionRemaining, setQuestionRemaining] = useState(activeQuestion?.timeAllocation || 60);
+
+  const [questionRemaining, setQuestionRemaining] = useState(() => {
+    try {
+      const localData = localStorage.getItem(`techscreen_assessment_draft_${props.attempt.id}`);
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        if (parsed && typeof parsed.questionRemaining === "number" && parsed.questionRemaining > 0) {
+          return parsed.questionRemaining;
+        }
+      }
+    } catch (e) {
+      console.error("Failed to restore questionRemaining:", e);
+    }
+    return activeQuestion?.timeAllocation || 60;
+  });
 
   // Answer tracking
   const [selectedMcq, setSelectedMcq] = useState<string | string[]>("");
@@ -58,6 +122,8 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
   const [isCompiling, setIsCompiling] = useState(false);
   const [consoleOutput, setConsoleOutput] = useState("");
   const [testResults, setTestResults] = useState<any[]>([]);
+  const [editorTheme, setEditorTheme] = useState<"vs-dark" | "light">("vs-dark");
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   // AI Review States
   const [isAiReviewing, setIsAiReviewing] = useState(false);
@@ -154,6 +220,47 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
   useEffect(() => {
     fillInTextRef.current = fillInText;
   }, [fillInText]);
+
+  // Save current question's live input and timer values to localStorage
+  useEffect(() => {
+    if (!activeQuestion) return;
+    
+    let currentAns: any = "";
+    if (activeQuestion.type === "coding") {
+      currentAns = code;
+    } else if (activeQuestion.type === "fill_in_blank") {
+      currentAns = fillInText;
+    } else {
+      currentAns = selectedMcq;
+    }
+
+    try {
+      const storageKey = `techscreen_assessment_draft_${attempt.id}`;
+      const localData = localStorage.getItem(storageKey);
+      let existingAnswers = { ...attempt.answers };
+      
+      if (localData) {
+        const parsed = JSON.parse(localData);
+        if (parsed && parsed.answers) {
+          existingAnswers = { ...parsed.answers };
+        }
+      }
+      
+      existingAnswers[activeQuestion.id] = currentAns;
+
+      const payload = {
+        answers: existingAnswers,
+        currentIdx,
+        overallRemaining,
+        questionRemaining,
+        lastSavedAt: new Date().toISOString()
+      };
+      
+      localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch (e) {
+      console.error("Failed to save draft to localStorage:", e);
+    }
+  }, [code, fillInText, selectedMcq, currentIdx, overallRemaining, questionRemaining, attempt.id, activeQuestion]);
 
   // Editor scroll ref and handler
   const lineNumbersRef = useRef<HTMLDivElement>(null);
@@ -444,6 +551,31 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
     }));
   };
 
+  // Configure keybindings and behaviors on Monaco load
+  const handleEditorMount = (editor: any, monaco: any) => {
+    // Custom save hotkey Cmd+S / Ctrl+S inside Monaco
+    editor.addAction({
+      id: "quick-save-progress",
+      label: "Quick Save Assessment Progress",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
+      run: () => {
+        handleSaveCurrentState();
+        return null;
+      }
+    });
+
+    // Custom format hint hotkey
+    editor.addAction({
+      id: "monaco-format-hint",
+      label: "View Formatting Guidelines",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF],
+      run: () => {
+        alert("Pro-tip: Code is auto-formatted by Monaco. Use Alt + Shift + F (on Windows/Linux) or Option + Shift + F (on macOS) for instant neat blocks!");
+        return null;
+      }
+    });
+  };
+
   // ==========================================
   // INTERACTIVE SANDBOX COMPILER (Module 7)
   // ==========================================
@@ -535,6 +667,12 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
       });
       if (res.ok) {
         const data = await res.json();
+        // Clear local storage draft upon successful evaluation
+        try {
+          localStorage.removeItem(`techscreen_assessment_draft_${attempt.id}`);
+        } catch (e) {
+          console.error("Failed to remove draft from localStorage on completion:", e);
+        }
         props.onComplete(data.attempt?.overallCandidateScore, data.attempt?.category, data.certificate?.id);
       } else {
         alert("Scoring engine could not submit. Retrying active connection...");
@@ -610,7 +748,14 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                 </span>
               )}
             </div>
-            <span className="text-[10px] text-indigo-600 font-semibold uppercase tracking-wider">Isolated Proctor Environment</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-indigo-600 font-semibold uppercase tracking-wider">Isolated Proctor Environment</span>
+              <span className="text-[10px] text-slate-300">•</span>
+              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-medium font-mono" title="Your work is backed up securely in local storage">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Auto-saved
+              </span>
+            </div>
           </div>
         </div>
 
@@ -674,10 +819,10 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
       </div>
 
       {/* Main Grid split: Left question/options, Right Playground */}
-      <div className="flex-grow grid grid-cols-1 lg:grid-cols-12 relative z-10 overflow-hidden" id="workspace-layout">
+      <div className="flex-grow grid grid-cols-1 lg:grid-cols-12 relative z-10 overflow-y-auto lg:overflow-hidden" id="workspace-layout">
         
         {/* LEFT COLUMN: Question Details Frame (Col-span-5) */}
-        <section className="lg:col-span-5 border-r border-slate-200 flex flex-col h-[calc(100vh-61px)] overflow-hidden bg-white relative" id="left-question-frame">
+        <section className="lg:col-span-5 border-r border-slate-200 flex flex-col h-auto lg:h-[calc(100vh-61px)] overflow-visible lg:overflow-hidden bg-white relative" id="left-question-frame">
           {/* Loading Transition Overlay */}
           {isNavigating && (
             <div className="absolute inset-0 bg-white/85 backdrop-blur-xs flex flex-col items-center justify-center z-50 animate-fade-in" id="loading-transition-overlay">
@@ -687,6 +832,69 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
               </div>
             </div>
           )}
+
+          {/* Real-time Secure Proctoring & Active Assessment Timer HUD */}
+          <div className="bg-slate-900 text-white p-3 px-4 flex flex-wrap justify-between items-center gap-3 border-b border-slate-800 shadow-sm relative z-30 font-sans" id="proctor-live-hud">
+            {/* Left: Security Status Badge & Heartbeat */}
+            <div className="flex items-center gap-2.5">
+              <div className="relative flex items-center justify-center">
+                <span className="absolute inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 opacity-75 animate-ping"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase font-mono">PROCTOR LOCK</span>
+                  <span className="px-1.5 py-0.25 bg-emerald-500/10 border border-emerald-500/25 rounded text-[8px] font-bold uppercase text-emerald-400 font-mono">ACTIVE</span>
+                </div>
+                <p className="text-[9px] text-slate-500 font-mono">SECURE INTEGRITY CHANNEL</p>
+              </div>
+            </div>
+
+            {/* Middle: Assessment Live Remaining Countdown Timer */}
+            <div className="flex items-center justify-between sm:justify-center gap-4 bg-slate-950/60 border border-slate-800/80 px-3.5 py-2 rounded-xl" id="proctor-hud-countdown">
+              <div className="flex items-center gap-2">
+                <Clock className={`w-3.5 h-3.5 ${overallRemaining / Math.max(1, totalTime) < 0.15 ? "text-rose-400 animate-pulse" : "text-indigo-400"}`} />
+                <span className="text-slate-400 text-[10px] uppercase font-mono font-semibold tracking-wide">Time Remaining</span>
+              </div>
+              <div className="flex items-baseline gap-1">
+                <span className={`font-mono text-base font-black tracking-tight leading-none ${
+                  (overallRemaining / Math.max(1, totalTime)) < 0.15 
+                    ? "text-rose-500 animate-pulse" 
+                    : (overallRemaining / Math.max(1, totalTime)) < 0.35 
+                    ? "text-amber-500" 
+                    : "text-indigo-400"
+                }`}>
+                  {formatTimerValue(overallRemaining)}
+                </span>
+                <span className="text-[9px] text-slate-500 font-mono">/ {formatTimerValue(totalTime)}</span>
+              </div>
+            </div>
+
+            {/* Right: Security integrity Index HUD Indicator */}
+            <div className="flex items-center justify-between sm:justify-end gap-3 text-right">
+              <div className="hidden sm:block text-left sm:text-right">
+                <span className="text-[9px] font-bold text-slate-400 block uppercase font-mono tracking-wider">Integrity Index</span>
+                <p className="text-[10px] text-slate-500 font-mono leading-none">Continuous Check</p>
+              </div>
+              <div className="flex items-center gap-2.5 bg-slate-950/60 border border-slate-800/80 px-3 py-1.5 rounded-xl">
+                <div className="w-1.5 h-6 bg-slate-800 rounded-full overflow-hidden relative">
+                  <div 
+                    className="absolute bottom-0 w-full rounded-full transition-all duration-500"
+                    style={{ 
+                      height: `${integrityScore}%`,
+                      backgroundColor: integrityScore > 85 ? '#10b981' : integrityScore > 60 ? '#f59e0b' : '#ef4444'
+                    }}
+                  />
+                </div>
+                <div>
+                  <span className={`font-mono text-xs font-extrabold ${
+                    integrityScore > 85 ? 'text-emerald-400' : integrityScore > 60 ? 'text-amber-400' : 'text-rose-400'
+                  }`}>{integrityScore}%</span>
+                  <span className="text-[8px] text-slate-500 block leading-none font-mono">SECURE</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <div className="flex-grow overflow-y-auto p-5 flex flex-col space-y-5" id="left-question-scroll-content">
             <AnimatePresence mode="wait">
@@ -716,7 +924,7 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                 </div>
 
                 {/* Real-time Pacing & Progress Monitor Widget */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3" id="pacing-dashboard-card">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4 shadow-3xs" id="pacing-dashboard-card">
                   <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
                     <span className="flex items-center gap-1.5 text-indigo-700">
                       <Clock className="w-4 h-4 text-indigo-600 animate-pulse" />
@@ -725,6 +933,51 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                     <span className="font-mono text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-bold">
                       {completionPercent}% Questions Done
                     </span>
+                  </div>
+
+                  {/* Question Quick-Jump Navigator (Grid) */}
+                  <div className="border-t border-b border-slate-200/60 py-3 animate-fade-in" id="monaco-question-navigator">
+                    <div className="flex justify-between items-center text-[11px] mb-1.5">
+                      <span className="text-slate-600 font-bold flex items-center gap-1">
+                        <Grid className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+                        <span>Interactive Question Sheet</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono italic">Click to Navigate</span>
+                    </div>
+                    <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 p-1 bg-white border border-slate-150 rounded-lg max-h-[140px] overflow-y-auto">
+                      {attempt.questions.map((q, idx) => {
+                        const isCurrent = idx === currentIdx;
+                        const isAnswered = attempt.answers[q.id] !== undefined && attempt.answers[q.id] !== null && attempt.answers[q.id] !== "";
+                        return (
+                          <button
+                            key={q.id}
+                            onClick={async () => {
+                              if (isNavigatingRef.current) return;
+                              isNavigatingRef.current = true;
+                              setIsNavigating(true);
+                              try {
+                                await handleSaveCurrentState();
+                                setCurrentIdx(idx);
+                              } finally {
+                                isNavigatingRef.current = false;
+                                setIsNavigating(false);
+                              }
+                            }}
+                            className={`h-7 rounded-md font-mono text-xs font-bold transition flex items-center justify-center cursor-pointer ${
+                              isCurrent
+                                ? "bg-indigo-600 text-white ring-2 ring-indigo-300 ring-offset-1 font-extrabold shadow-sm"
+                                : isAnswered
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
+                                : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
+                            }`}
+                            title={`Question ${idx + 1} (${isAnswered ? "Answered" : "Unanswered"})`}
+                            id={`quick-nav-question-${idx}`}
+                          >
+                            {idx + 1}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Interactive Progress Bars */}
@@ -797,6 +1050,22 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                       <span className="font-bold block text-[12px]">{pacingStatus}</span>
                       <span className="text-slate-600 text-[11px] block leading-relaxed">{pacingAdvice}</span>
                     </div>
+                  </div>
+
+                  {/* Prominent "Save & Return" button inside screen */}
+                  <div className="bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-between text-xs gap-3 shadow-3xs" id="proctor-hud-pause-card">
+                    <div className="space-y-0.5">
+                      <span className="font-bold text-slate-800 block text-[11px]">Save & Return to Dashboard</span>
+                      <span className="text-[10px] text-slate-500 block">Progress is secured and auto-saved.</span>
+                    </div>
+                    <button
+                      onClick={() => setShowExitConfirm(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-850 text-white font-bold rounded-lg transition text-[11px] cursor-pointer shadow-sm focus:outline-none focus:ring-1 focus:ring-slate-700"
+                      id="save-exit-pacing-btn"
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Pause & Return</span>
+                    </button>
                   </div>
                 </div>
 
@@ -880,18 +1149,30 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
 
           {/* Left bottom Sticky Navigation controls bar */}
           <div className="p-4 border-t border-slate-150 flex items-center justify-between bg-slate-50 shrink-0 z-10 animate-fade-in" id="navigation-controls">
-            {currentIdx > 0 ? (
+            <div className="flex items-center gap-2">
+              {currentIdx > 0 ? (
+                <button
+                  onClick={handlePrevQuestion}
+                  className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-400/50"
+                  id="prev-question-btn"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Back</span>
+                </button>
+              ) : (
+                <div className="w-1" />
+              )}
+
               <button
-                onClick={handlePrevQuestion}
-                className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-100 text-slate-600 hover:text-slate-900 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-400/50"
-                id="prev-question-btn"
+                onClick={() => setShowExitConfirm(true)}
+                className="px-3 py-1.5 border border-slate-205 hover:bg-slate-100 text-slate-650 hover:text-slate-900 text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-slate-400/50"
+                id="bottom-return-btn"
+                title="Save assessment state and return to dashboard"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                <span>Back</span>
+                <LogOut className="w-3.5 h-3.5 text-slate-500" />
+                <span>Return to Screen</span>
               </button>
-            ) : (
-              <div className="w-10" />
-            )}
+            </div>
             
             <AnimatePresence mode="wait">
               {isCurrentAnswered ? (
@@ -909,16 +1190,26 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                   <ChevronRight className="w-4 h-4" />
                 </motion.button>
               ) : (
-                <div className="text-[11px] font-semibold text-slate-400 italic bg-slate-100 px-3 py-1.5 rounded-lg border border-dashed border-slate-200" id="unanswered-warning">
-                  Select answer to continue
-                </div>
+                <motion.button
+                  key="next-btn-skip"
+                  initial={{ opacity: 0, x: 10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 10 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => handleNextQuestion(false)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 border border-slate-300 text-slate-750 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-slate-300/50"
+                  id="skip-question-btn"
+                >
+                  <span>{currentIdx < attempt.questions.length - 1 ? "Skip & Next" : "Submit Unfinished"}</span>
+                  <ChevronRight className="w-4 h-4 text-slate-500" />
+                </motion.button>
               )}
             </AnimatePresence>
           </div>
         </section>
 
         {/* RIGHT COLUMN: Code Playground Editor (Col-span-7) */}
-        <section className="lg:col-span-7 flex flex-col h-[calc(100vh-61px)] bg-slate-50 overflow-hidden" id="right-playground-frame">
+        <section className="lg:col-span-7 flex flex-col h-auto lg:h-[calc(100vh-61px)] bg-slate-50 overflow-visible lg:overflow-hidden" id="right-playground-frame">
           {activeQuestion.type === "coding" ? (
             <div className="flex flex-col h-full overflow-hidden" id="coding-workspace">
               {/* Language selection strip */}
@@ -962,23 +1253,157 @@ export default function AssessmentEngine(props: AssessmentEngineProps) {
                 </div>
               </div>
 
-              {/* Editor Workspace */}
-              <div className="flex-grow flex relative overflow-hidden h-[45%]" id="editor-lines-row">
-                <div 
-                  ref={lineNumbersRef}
-                  className="w-10 bg-slate-100 border-r border-slate-200 select-none py-4 text-center font-mono text-[10px] text-slate-400 leading-relaxed text-right pr-2.5 overflow-hidden"
-                >
-                  {Array.from({ length: Math.max(25, code.split("\n").length) }, (_, i) => i + 1).map(n => <div key={n}>{n}</div>)}
+              {/* Monaco-based Editor Workspace */}
+              <div className="flex-grow flex flex-col relative border border-slate-200 rounded-xl overflow-hidden bg-slate-900 shadow-sm min-h-[450px]" id="editor-lines-row">
+                {/* Monaco Editor Sub-Header */}
+                <div className="flex justify-between items-center bg-slate-950 px-4 py-2 text-slate-400 border-b border-slate-800" id="monaco-toolbar">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/25 font-mono font-bold px-1.5 py-0.5 rounded uppercase">
+                      IDE Mode
+                    </span>
+                    <div className="flex items-center gap-1 text-[11px] font-mono text-slate-400">
+                      <Code className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{editorLanguage.toUpperCase()} Compiler Sandboxed</span>
+                    </div>
+                  </div>
+
+                  {/* Editor Actions: Dark/Light Theme & Keyboard Shortcuts Help */}
+                  <div className="flex items-center gap-3">
+                    {/* Hotkeys Information Toggle */}
+                    <button
+                      onClick={() => setShowShortcuts(!showShortcuts)}
+                      className="flex items-center gap-1.5 text-[10px] font-mono bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 px-2.5 py-1 rounded-md cursor-pointer transition"
+                      title="Show keyboard shortcuts"
+                      id="editor-shortcuts-btn"
+                    >
+                      <Keyboard className="w-3 h-3 text-slate-400" />
+                      <span>Shortcuts Guide</span>
+                    </button>
+
+                    {/* Theme Switcher */}
+                    <button
+                      onClick={() => setEditorTheme(prev => prev === "vs-dark" ? "light" : "vs-dark")}
+                      className="flex items-center gap-1 text-[10px] font-mono bg-slate-900 hover:bg-slate-850 text-slate-300 border border-slate-800 px-2 py-1 rounded-md cursor-pointer transition"
+                      title="Switch editor theme"
+                      id="editor-theme-toggle"
+                    >
+                      {editorTheme === "vs-dark" ? (
+                        <>
+                          <Sun className="w-3 h-3 text-amber-400" />
+                          <span>Light UI</span>
+                        </>
+                      ) : (
+                        <>
+                          <Moon className="w-3 h-3 text-indigo-400" />
+                          <span>Dark UI</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
-                <textarea
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  onScroll={handleTextareaScroll}
-                  className="flex-grow bg-white p-4 outline-none border-none text-slate-800 font-mono text-xs leading-relaxed resize-none h-full"
-                  spellCheck="false"
-                  placeholder="// Complete your programming assignment here..."
-                  id="code-text-area"
-                ></textarea>
+
+                {/* Shortcuts Help Overlay Panel */}
+                {showShortcuts && (
+                  <div className="absolute top-11 right-4 z-40 bg-slate-950 border border-slate-800 p-4 rounded-xl shadow-xl max-w-xs space-y-3 text-slate-300 animate-in fade-in slide-in-from-top-2 duration-150" id="monaco-shortcuts-overlay">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                      <span className="font-bold text-xs text-white flex items-center gap-1.5">
+                        <Keyboard className="w-3.5 h-3.5 text-indigo-400" />
+                        Monaco IDE Shortcuts
+                      </span>
+                      <button 
+                        onClick={() => setShowShortcuts(false)}
+                        className="text-slate-500 hover:text-slate-300 font-bold font-mono text-[11px]"
+                      >
+                        [ESC]
+                      </button>
+                    </div>
+                    <div className="space-y-2 text-[10px] font-mono">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Auto-Format Code:</span>
+                        <kbd className="bg-slate-900 px-1.5 py-0.5 rounded text-indigo-400 border border-slate-800 font-mono">Shift+Alt+F</kbd>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Comment Selection:</span>
+                        <kbd className="bg-slate-900 px-1.5 py-0.5 rounded text-indigo-400 border border-slate-800 font-mono">Ctrl+/</kbd>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Trigger Suggestions:</span>
+                        <kbd className="bg-slate-900 px-1.5 py-0.5 rounded text-indigo-400 border border-slate-800 font-mono">Ctrl+Space</kbd>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Multi-Cursor Select:</span>
+                        <kbd className="bg-slate-900 px-1.5 py-0.5 rounded text-indigo-400 border border-slate-800 font-mono">Alt+Click</kbd>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Quick-Save Progress:</span>
+                        <kbd className="bg-slate-900 px-1.5 py-0.5 rounded text-indigo-400 border border-slate-800 font-mono">Ctrl+S</kbd>
+                      </div>
+                    </div>
+                    <p className="text-[9px] text-slate-500 italic leading-snug">
+                      These core bindings operate directly in the sandboxed editor frame to maximize assessment speed.
+                    </p>
+                  </div>
+                )}
+
+                {/* The Live Monaco Editor */}
+                <div className="flex-grow w-full relative h-[400px]" id="monaco-editor-pane">
+                  <Editor
+                    height="100%"
+                    width="100%"
+                    language={editorLanguage === "javascript" ? "javascript" : editorLanguage === "typescript" ? "typescript" : editorLanguage === "python" ? "python" : editorLanguage === "go" ? "go" : editorLanguage === "java" ? "java" : "csharp"}
+                    theme={editorTheme}
+                    value={code}
+                    onChange={(val) => setCode(val || "")}
+                    onMount={handleEditorMount}
+                    loading={
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950 text-slate-400 gap-3 font-sans">
+                        <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></div>
+                        <span className="text-xs font-mono tracking-wider">Mounting Live Monaco Compiler IDE...</span>
+                      </div>
+                    }
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      fontFamily: "JetBrains Mono, Fira Code, Menlo, Courier New, monospace",
+                      lineNumbers: "on",
+                      glyphMargin: false,
+                      folding: true,
+                      lineDecorationsWidth: 10,
+                      lineNumbersMinChars: 3,
+                      automaticLayout: true,
+                      tabSize: 2,
+                      scrollBeyondLastLine: false,
+                      cursorBlinking: "smooth",
+                      smoothScrolling: true,
+                      wordWrap: "on",
+                      renderLineHighlight: "all",
+                      scrollbar: {
+                        vertical: "visible",
+                        horizontal: "visible",
+                        useShadows: false,
+                        verticalHasArrows: false,
+                        horizontalHasArrows: false,
+                        verticalScrollbarSize: 10,
+                        horizontalScrollbarSize: 10
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Monaco Editor Status Footer */}
+                <div className="bg-slate-950/80 border-t border-slate-850 px-4 py-1.5 text-[10px] font-mono text-slate-500 flex justify-between items-center" id="monaco-footer">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      INTELLISENSE READY
+                    </span>
+                    <span>•</span>
+                    <span>TAB SIZE: 2</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-slate-400 uppercase font-bold text-[9px] tracking-wider">
+                    <span>STATUS: ACTIVE</span>
+                  </div>
+                </div>
               </div>
 
               {/* Compilation Test Cases details */}

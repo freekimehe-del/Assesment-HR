@@ -360,50 +360,57 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 selection:bg-indigo-500 selection:text-white flex flex-col font-sans" id="app-root">
       
       {/* Candidate Assessment Software Test Bar */}
-      <div className="bg-slate-900 text-slate-100 px-4 py-2 text-xs flex flex-col md:flex-row gap-2 justify-between items-center border-b border-slate-800 shrink-0 sticky top-0 z-50 shadow-md">
-        <div className="flex items-center gap-2">
-          <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
-          <span className="font-sans font-bold tracking-tight text-white">Candidate Assessment Software</span>
+      <div className="bg-slate-950/95 backdrop-blur-md text-slate-100 px-6 py-2.5 text-xs flex flex-col lg:flex-row gap-3 justify-between items-center border-b border-slate-800/80 shrink-0 sticky top-0 z-50 shadow-lg" id="sandbox-roles-bar">
+        <div className="flex items-center gap-2.5">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+            <span className="relative inline-block rounded-full h-2 w-2 bg-indigo-500"></span>
+          </span>
+          <span className="font-display font-extrabold tracking-tight text-white text-sm">TechScreen</span>
+          <span className="px-2 py-0.5 bg-slate-800 text-[9px] text-slate-400 font-mono rounded border border-slate-700/50 uppercase tracking-wider font-bold">Sandbox Environment</span>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-slate-400">Switch role on-the-fly to test interconnected feedback loops:</span>
-          <div className="flex bg-slate-800 rounded p-0.5 border border-slate-700">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-slate-400 font-medium text-[11px] hidden sm:inline">Switch role on-the-fly to test interconnected feedback loops:</span>
+          <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800 shadow-inner">
             <button
               onClick={() => handleRoleSwitch("CANDIDATE")}
               disabled={view === "assessment"}
-              className={`px-3 py-1 rounded transition-all font-semibold cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 text-[11px] font-bold cursor-pointer button-premium-active ${
                 user?.role === UserRole.CANDIDATE && view !== "assessment"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
+                  : "text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
               }`}
+              id="sandbox-candidate-btn"
             >
               Candidate (Alex)
             </button>
             <button
               onClick={() => handleRoleSwitch("RECRUITER")}
               disabled={view === "assessment"}
-              className={`px-3 py-1 rounded transition-all font-semibold cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 text-[11px] font-bold cursor-pointer button-premium-active ${
                 user?.role === UserRole.RECRUITER && view !== "assessment"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
+                  : "text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
               }`}
+              id="sandbox-recruiter-btn"
             >
               Recruiter (Marcus)
             </button>
             <button
               onClick={() => handleRoleSwitch("ADMIN")}
               disabled={view === "assessment"}
-              className={`px-3 py-1 rounded transition-all font-semibold cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg transition-all duration-200 text-[11px] font-bold cursor-pointer button-premium-active ${
                 user?.role === UserRole.ADMIN && view !== "assessment"
-                  ? "bg-indigo-600 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10"
+                  : "text-slate-400 hover:text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
               }`}
+              id="sandbox-admin-btn"
             >
               Admin (Platform)
             </button>
           </div>
           {view === "assessment" && (
-            <span className="text-rose-400 animate-pulse font-mono font-semibold">Assessment Active - Sandbox Locked</span>
+            <span className="text-rose-400 animate-pulse font-mono font-bold text-[10px] bg-rose-500/10 border border-rose-500/20 px-2.5 py-1 rounded-full uppercase tracking-wider">Assessment Active</span>
           )}
         </div>
       </div>

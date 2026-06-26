@@ -24,13 +24,35 @@ import {
 dotenv.config();
 
 const app = express();
-const PORT = 4000;
+const PORT = 3000;
 
 app.use(express.json());
 
 // Initialize Gemini Client safely
 let aiClient: GoogleGenAI | null = null;
+let aiClientBlocked = false;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+function handleGeminiError(err: any, contextMessage: string) {
+  const errStr = String(err);
+  const errMsg = err?.message || "";
+  const errStatus = err?.status || "";
+  const errCode = err?.code || err?.status_code || 0;
+  
+  if (
+    errStr.includes("PERMISSION_DENIED") || 
+    errStr.includes("denied access") || 
+    errMsg.includes("PERMISSION_DENIED") || 
+    errMsg.includes("denied access") ||
+    errStatus === "PERMISSION_DENIED" ||
+    errCode === 403
+  ) {
+    console.log("[Gemini API Status] Active key is restricted or lacks permissions. Switched immediately to local analysis engine.");
+    aiClientBlocked = true;
+  } else {
+    console.log(`[Gemini API Status] Notice: ${contextMessage}`);
+  }
+}
 
 if (GEMINI_API_KEY && GEMINI_API_KEY !== "MY_GEMINI_API_KEY" && GEMINI_API_KEY.trim() !== "") {
   try {
@@ -42,12 +64,38 @@ if (GEMINI_API_KEY && GEMINI_API_KEY !== "MY_GEMINI_API_KEY" && GEMINI_API_KEY.t
         }
       }
     });
-    console.log("Gemini AI Client successfully initialized.");
+    console.log("Gemini AI Client initialized. Validating access credentials...");
+
+    // Proactive access verification
+    aiClient.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: "ping",
+    }).then(() => {
+      console.log("[Gemini API Status] Connection check successful. AI features active.");
+    }).catch((err) => {
+      const errStr = String(err);
+      const errMsg = err?.message || "";
+      const errStatus = err?.status || "";
+      const errCode = err?.code || err?.status_code || 0;
+      if (
+        errStr.includes("PERMISSION_DENIED") || 
+        errStr.includes("denied access") || 
+        errMsg.includes("PERMISSION_DENIED") || 
+        errMsg.includes("denied access") ||
+        errStatus === "PERMISSION_DENIED" ||
+        errCode === 403
+      ) {
+        aiClientBlocked = true;
+        console.log("[Gemini API Status] Access restricted (403/Permission Denied). Local fallback engine is active.");
+      } else {
+        console.log("[Gemini API Status] Active warning check: fallback ready.");
+      }
+    });
   } catch (err) {
-    console.error("Error creating Gemini AI Client:", err);
+    console.log("[Gemini API Status] Setup warning. Local fallback engine is active.");
   }
 } else {
-  console.warn("GEMINI_API_KEY is not defined. AI Code Reviews will fall back to dynamic local analysis.");
+  console.log("[Gemini API Status] Key is not defined. Local analysis fallback is active.");
 }
 
 // ==========================================
@@ -1319,7 +1367,7 @@ app.post("/api/assessment/scratchpad-explain", async (req: Request, res: Respons
     `2. "conceptualTips": A list of 2 or 3 bullet points showing best practices or standard gotchas for this topic.\n` +
     `3. "integrityWarning": A short friendly reminder encouraging the candidate to think critically.`;
 
-  if (aiClient) {
+  if (aiClient && !aiClientBlocked) {
     try {
       const response = await aiClient.models.generateContent({
         model: "gemini-3.5-flash",
@@ -1347,7 +1395,7 @@ app.post("/api/assessment/scratchpad-explain", async (req: Request, res: Respons
         return res.json(JSON.parse(responseText));
       }
     } catch (err) {
-      console.error("Gemini scratchpad explanation query failed:", err);
+      handleGeminiError(err, "Gemini scratchpad explanation query failed");
     }
   }
 
@@ -1376,7 +1424,7 @@ app.post("/api/assessment/submit-code-review", async (req: Request, res: Respons
   const promptDescription = question ? question.description : "Extract duplicate elements from an array.";
 
   // If Gemini client exists, let's call Gemini 3.5 Flash with structured schema!
-  if (aiClient) {
+  if (aiClient && !aiClientBlocked) {
     try {
       console.log(`Querying Gemini 3.5 Flash for automated code audit on language: ${language}`);
       const prompt = `Perform a comprehensive technical static code review for the following candidate submission.
@@ -1453,7 +1501,7 @@ Provide also cyclomatic/Big-O summary in complexityAnalysis, 2-3 vulnerabilities
       console.log("AI code review completed successfully with score:", parsedReview.overallEngineeringScore);
       return res.json({ success: true, review: parsedReview });
     } catch (err) {
-      console.error("Gemini Code Review generation failed, falling back to local heuristic analysis.", err);
+      handleGeminiError(err, "Gemini Code Review generation failed, falling back to local heuristic analysis");
     }
   }
 
@@ -1766,7 +1814,7 @@ app.post("/api/assessment/analyze-strengths-weaknesses", async (req: Request, re
     }
   });
 
-  if (aiClient) {
+  if (aiClient && !aiClientBlocked) {
     try {
       console.log(`Querying Gemini 3.5 Flash for Strengths & Weaknesses on attempt: ${attempt.id}`);
       
@@ -1851,7 +1899,7 @@ Ensure you provide exactly 2-3 strengths, exactly 2-3 weaknesses, a summary, and
       const parsedAnalysis = JSON.parse(geminiResponse.text.trim());
       return res.json({ success: true, analysis: parsedAnalysis });
     } catch (err) {
-      console.error("Gemini Strengths/Weaknesses generation failed, falling back to local analysis", err);
+      handleGeminiError(err, "Gemini Strengths/Weaknesses generation failed, falling back to local analysis");
     }
   }
 
@@ -2282,7 +2330,7 @@ app.post("/api/assessment/interview/start", async (req: Request, res: Response) 
 
   const interviewerIntroduction = `Hi ${attempt.candidateName}! Congratulations on completing your ${attempt.category} coding test. I'm your AI technical interviewer today. I've reviewed your solution to the "${codingQuestion.title}" challenge where you passed ${passedTests} of ${totalTests} test cases. Let's discuss your design choices.`;
 
-  if (aiClient) {
+  if (aiClient && !aiClientBlocked) {
     try {
       const prompt = `You are a premium, highly professional but friendly Senior Technical Interviewer at a top tier software enterprise.
 The candidate ${attempt.candidateName} has just completed a coding challenge.
@@ -2319,7 +2367,7 @@ Rules:
         candidateCode: userCode
       });
     } catch (err) {
-      console.error("Failed to generate first interview question with Gemini, using fallback.", err);
+      handleGeminiError(err, "Failed to generate first interview question with Gemini, using fallback");
     }
   }
 
@@ -2353,7 +2401,7 @@ app.post("/api/assessment/interview/chat", async (req: Request, res: Response) =
   const userTurns = chatHistory.filter((m: any) => m.role === "user").length;
   const isLastTurn = userTurns >= 3;
 
-  if (aiClient) {
+  if (aiClient && !aiClientBlocked) {
     try {
       let prompt = "";
       if (isLastTurn) {
@@ -2407,7 +2455,7 @@ Rules:
         completed: isLastTurn
       });
     } catch (err) {
-      console.error("Failed to generate chat response with Gemini, using fallback.", err);
+      handleGeminiError(err, "Failed to generate chat response with Gemini, using fallback");
     }
   }
 
@@ -2619,7 +2667,7 @@ Rules:
 2. Tailor your recommendations to the track: ${category}.
 3. Ensure the JSON is completely valid and parsed correctly without code blocks or markdown wrappers.`;
 
-  if (aiClient) {
+  if (aiClient && !aiClientBlocked) {
     try {
       const response = await aiClient.models.generateContent({
         model: "gemini-3.5-flash",
@@ -2643,7 +2691,7 @@ Rules:
         estimatedTimeMinutes: result.estimatedTimeMinutes || "150 mins / week"
       });
     } catch (err) {
-      console.error("Gemini career coaching summary failed, using fallback:", err);
+      handleGeminiError(err, "Gemini career coaching summary failed, using fallback");
     }
   }
 
