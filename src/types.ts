@@ -36,6 +36,11 @@ export interface UserProfile {
     description: string;
   }[];
   
+  // Administrative extensions
+  status?: "active" | "suspended";
+  department?: string;
+  permissionGroupId?: string;
+  
   // Recruiter / Org details
   companyName?: string;
   subscriptionPlan: "basic" | "professional" | "enterprise";

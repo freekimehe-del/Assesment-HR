@@ -135,7 +135,9 @@ const DEFAULT_USERS: UserProfile[] = [
     ],
     dailySearchQuotaUsed: 0,
     subscriptionPlan: "basic",
-    subscriptionActive: false
+    subscriptionActive: false,
+    status: "active",
+    permissionGroupId: "group-candidate-standard"
   },
   {
     id: "user-candidate-2",
@@ -162,7 +164,9 @@ const DEFAULT_USERS: UserProfile[] = [
     ],
     dailySearchQuotaUsed: 0,
     subscriptionPlan: "basic",
-    subscriptionActive: false
+    subscriptionActive: false,
+    status: "active",
+    permissionGroupId: "group-candidate-standard"
   },
   {
     id: "user-recruiter-1",
@@ -179,7 +183,10 @@ const DEFAULT_USERS: UserProfile[] = [
       { email: "hiring.manager@vortex.com", role: "Hiring Manager", addedAt: "2026-03-12" },
       { email: "ta.lead@vortex.com", role: "TA Lead", addedAt: "2026-04-10" }
     ],
-    skills: []
+    skills: [],
+    status: "active",
+    permissionGroupId: "group-recruiter-admin",
+    department: "Talent Acquisition"
   },
   {
     id: "user-admin-1",
@@ -191,7 +198,36 @@ const DEFAULT_USERS: UserProfile[] = [
     dailySearchQuotaUsed: 0,
     subscriptionPlan: "enterprise",
     subscriptionActive: true,
-    skills: []
+    skills: [],
+    status: "active"
+  }
+];
+
+interface PermissionGroup {
+  id: string;
+  name: string;
+  targetRole: "RECRUITER" | "CANDIDATE";
+  permissions: string[];
+}
+
+let dbPermissionGroups: PermissionGroup[] = [
+  {
+    id: "group-recruiter-standard",
+    name: "Standard Recruiter",
+    targetRole: "RECRUITER",
+    permissions: ["View Candidates", "Create Assessments", "Assign Tests", "View Results", "Schedule Interviews", "AI Evaluation Access", "Dashboard Analytics"]
+  },
+  {
+    id: "group-recruiter-admin",
+    name: "Lead Recruiter",
+    targetRole: "RECRUITER",
+    permissions: ["View Candidates", "Create Assessments", "Edit Assessments", "Delete Assessments", "Assign Tests", "View Results", "Export Reports", "Download Reports", "Schedule Interviews", "Manage Question Bank", "Invite Candidates", "Send Emails", "AI Evaluation Access", "Dashboard Analytics"]
+  },
+  {
+    id: "group-candidate-standard",
+    name: "Standard Candidate",
+    targetRole: "CANDIDATE",
+    permissions: ["View Assigned Tests", "Start Test", "Resume Test", "Submit Test", "View Result", "Download Certificate", "Upload Resume", "Update Profile", "View Interview Schedule"]
   }
 ];
 
@@ -1198,6 +1234,243 @@ app.delete("/api/admin/questions/:id", (req: Request, res: Response) => {
   }
   dbQuestions.splice(index, 1);
   res.json({ message: "Question deleted.", totalCount: dbQuestions.length });
+});
+
+// --- ADMIN USER & PERMISSION SUITE ---
+
+// Get all users
+app.get("/api/admin/users", (req: Request, res: Response) => {
+  res.json({ success: true, users: dbUsers });
+});
+
+// Create candidate or recruiter
+app.post("/api/admin/users/create", (req: Request, res: Response) => {
+  const { email, fullName, role, department, permissionGroupId, location, contactNumber, currentRole, experienceLevel, yearsOfExperience, companyName, subscriptionPlan } = req.body;
+  if (!email || !fullName || !role) {
+    return res.status(400).json({ error: "Required fields (email, fullName, role) are missing." });
+  }
+  const exists = dbUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (exists) {
+    return res.status(400).json({ error: "User with this email already exists." });
+  }
+
+  const newUser: UserProfile = {
+    id: `user-gen-${Math.random().toString(36).substr(2, 9)}`,
+    email,
+    fullName,
+    role,
+    status: "active",
+    department,
+    permissionGroupId,
+    mfaEnabled: false,
+    dailySearchQuotaUsed: 0,
+    skills: [],
+    subscriptionPlan: "basic",
+    subscriptionActive: false,
+    ...(role === "CANDIDATE" ? {
+      location,
+      contactNumber,
+      currentRole,
+      experienceLevel: experienceLevel || "mid",
+      yearsOfExperience: Number(yearsOfExperience) || 0,
+      skills: [],
+      certifications: [],
+      employmentHistory: []
+    } : {
+      companyName: companyName || "New Enterprise Partner",
+      subscriptionPlan: subscriptionPlan || "professional",
+      subscriptionActive: true
+    })
+  };
+
+  dbUsers.push(newUser);
+  res.status(201).json({ success: true, user: newUser });
+});
+
+// Edit candidate or recruiter profile
+app.post("/api/admin/users/edit", (req: Request, res: Response) => {
+  const { id, fullName, email, department, permissionGroupId, status, mfaEnabled, location, contactNumber, currentRole, experienceLevel, yearsOfExperience, companyName, subscriptionPlan } = req.body;
+  const user = dbUsers.find(u => u.id === id);
+  if (!user) {
+    return res.status(404).json({ error: "User not found." });
+  }
+
+  if (fullName !== undefined) user.fullName = fullName;
+  if (email !== undefined) user.email = email;
+  if (department !== undefined) user.department = department;
+  if (permissionGroupId !== undefined) user.permissionGroupId = permissionGroupId;
+  if (status !== undefined) user.status = status;
+  if (mfaEnabled !== undefined) user.mfaEnabled = mfaEnabled;
+
+  if (user.role === "CANDIDATE") {
+    if (location !== undefined) user.location = location;
+    if (contactNumber !== undefined) user.contactNumber = contactNumber;
+    if (currentRole !== undefined) user.currentRole = currentRole;
+    if (experienceLevel !== undefined) user.experienceLevel = experienceLevel as any;
+    if (yearsOfExperience !== undefined) user.yearsOfExperience = Number(yearsOfExperience) || 0;
+  } else if (user.role === "RECRUITER") {
+    if (companyName !== undefined) user.companyName = companyName;
+    if (subscriptionPlan !== undefined) user.subscriptionPlan = subscriptionPlan;
+  }
+
+  res.json({ success: true, user });
+});
+
+// Suspend/Activate user status
+app.post("/api/admin/users/status", (req: Request, res: Response) => {
+  const { id, status } = req.body;
+  const user = dbUsers.find(u => u.id === id);
+  if (!user) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  user.status = status;
+  res.json({ success: true, user });
+});
+
+// Reset recruiter or candidate credentials
+app.post("/api/admin/users/reset-password", (req: Request, res: Response) => {
+  const { id } = req.body;
+  const user = dbUsers.find(u => u.id === id);
+  if (!user) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  res.json({ success: true, message: `Password reset instructions successfully triggered for ${user.fullName} (${user.email}).` });
+});
+
+// Delete user account
+app.delete("/api/admin/users/:id", (req: Request, res: Response) => {
+  const index = dbUsers.findIndex(u => u.id === req.params.id);
+  if (index === -1) {
+    return res.status(404).json({ error: "User not found." });
+  }
+  dbUsers.splice(index, 1);
+  res.json({ success: true, message: "User account deleted." });
+});
+
+// Fetch permission groups
+app.get("/api/admin/permission-groups", (req: Request, res: Response) => {
+  res.json({ success: true, groups: dbPermissionGroups });
+});
+
+// Save/Update permission group
+app.post("/api/admin/permission-groups/save", (req: Request, res: Response) => {
+  const { id, name, targetRole, permissions } = req.body;
+  if (!name || !targetRole || !permissions) {
+    return res.status(400).json({ error: "Required fields are missing." });
+  }
+
+  const existing = dbPermissionGroups.find(g => g.id === id);
+  if (existing) {
+    existing.name = name;
+    existing.targetRole = targetRole;
+    existing.permissions = permissions;
+    res.json({ success: true, group: existing, message: "Permission group updated successfully." });
+  } else {
+    const newGroup = {
+      id: id || `group-custom-${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      targetRole,
+      permissions
+    };
+    dbPermissionGroups.push(newGroup);
+    res.json({ success: true, group: newGroup, message: "Custom permission group created successfully." });
+  }
+});
+
+// Duplicate question
+app.post("/api/admin/questions/duplicate", (req: Request, res: Response) => {
+  const { id } = req.body;
+  const original = dbQuestions.find(q => q.id === id);
+  if (!original) {
+    return res.status(404).json({ error: "Question not found." });
+  }
+  const clone = {
+    ...original,
+    id: `q-${Math.random().toString(36).substr(2, 9)}`,
+    title: `${original.title} (Copy)`,
+  };
+  dbQuestions.push(clone);
+  res.json({ success: true, question: clone });
+});
+
+// Archive question
+app.post("/api/admin/questions/archive", (req: Request, res: Response) => {
+  const { id } = req.body;
+  const q = dbQuestions.find(q => q.id === id);
+  if (q) {
+    (q as any).archived = true;
+    res.json({ success: true, question: q });
+  } else {
+    res.status(404).json({ error: "Question not found." });
+  }
+});
+
+// Restore question
+app.post("/api/admin/questions/restore", (req: Request, res: Response) => {
+  const { id } = req.body;
+  const q = dbQuestions.find(q => q.id === id);
+  if (q) {
+    (q as any).archived = false;
+    res.json({ success: true, question: q });
+  } else {
+    res.status(404).json({ error: "Question not found." });
+  }
+});
+
+// Bulk Delete Questions
+app.post("/api/admin/questions/bulk-delete", (req: Request, res: Response) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids)) {
+    return res.status(400).json({ error: "Invalid IDs array." });
+  }
+  dbQuestions = dbQuestions.filter(q => !ids.includes(q.id));
+  res.json({ success: true, message: `Successfully deleted ${ids.length} questions.` });
+});
+
+// Bulk Update Questions
+app.post("/api/admin/questions/bulk-update", (req: Request, res: Response) => {
+  const { ids, difficulty, category, weightage } = req.body;
+  if (!Array.isArray(ids)) {
+    return res.status(400).json({ error: "Invalid IDs array." });
+  }
+  dbQuestions.forEach(q => {
+    if (ids.includes(q.id)) {
+      if (difficulty) q.difficulty = difficulty;
+      if (category) q.category = category;
+      if (weightage !== undefined) q.weightage = Number(weightage);
+    }
+  });
+  res.json({ success: true, message: `Successfully updated ${ids.length} questions.` });
+});
+
+// Import Questions (spreadsheet/JSON)
+app.post("/api/admin/questions/import", (req: Request, res: Response) => {
+  const { questions: importedQuestions } = req.body;
+  if (!Array.isArray(importedQuestions)) {
+    return res.status(400).json({ error: "Invalid questions array for import." });
+  }
+  let count = 0;
+  importedQuestions.forEach((q: any) => {
+    if (q.title && q.description) {
+      dbQuestions.push({
+        id: `q-${Math.random().toString(36).substr(2, 9)}`,
+        type: q.type || "mcq",
+        difficulty: q.difficulty || "mid",
+        category: q.category || "Full Stack Development",
+        technologyStack: q.technologyStack || [],
+        title: q.title,
+        description: q.description,
+        options: q.options || ["Option A", "Option B", "Option C", "Option D"],
+        correctAnswer: q.correctAnswer || "Option A",
+        explanation: q.explanation || "No explanation attached.",
+        weightage: Number(q.weightage) || 10,
+        timeAllocation: Number(q.timeAllocation) || 60,
+        tags: q.tags || []
+      });
+      count++;
+    }
+  });
+  res.json({ success: true, message: `Successfully imported ${count} questions.`, count });
 });
 
 // 4. RANDOMIZED ASSESSMENT GENERATOR (Module 5)
